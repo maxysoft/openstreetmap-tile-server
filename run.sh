@@ -179,6 +179,9 @@ if [ "$1" == "run" ]; then
         cp /data/database/planet-import-complete /data/tiles/planet-import-complete
     fi
 
+    # Ensure proper permissions for tile directory
+    chown -R renderer: /data/tiles /var/cache/renderd
+
     # Wait for PostgreSQL to be ready
     waitForPostgres
 
