@@ -26,6 +26,8 @@ services:
       - "random_page_cost=1.1"
       - "-c"
       - "max_wal_size=2GB"
+      - "-c"
+      - "jit=off"
     volumes:
       - osm-data:/var/lib/postgresql/data
     shm_size: 256MB

@@ -35,6 +35,9 @@ Optimized PostgreSQL configuration for production workloads:
 | `effective_cache_size` | 2GB | Help query planner estimate available cache |
 | `random_page_cost` | 1.1 | Optimized for SSD storage |
 | `max_wal_size` | 2GB | Write-Ahead Log size for better write performance |
+| `jit` | off | Disable JIT compilation for more predictable query performance |
+
+**JIT Compilation Disabled**: JIT (Just-In-Time) compilation is disabled (`jit=off`) for more predictable query performance. While JIT can improve complex query performance, it adds compilation overhead that may not be beneficial for typical tile rendering queries. Disabling it provides more consistent response times.
 
 **Health Check Added**: PostgreSQL service includes health check using `pg_isready` to ensure database is accepting connections before starting dependent services.
 
