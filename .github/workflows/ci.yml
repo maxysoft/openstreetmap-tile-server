@@ -69,6 +69,33 @@ jobs:
           postgis/postgis:18-3.6
         sleep 10
     -
+      name: Test run without import (should fail with clear error)
+      run: |
+        echo "Testing that run mode fails gracefully when database not imported..."
+        if docker run --rm --shm-size=128M \
+          --link postgres:postgres \
+          -e PGHOST=postgres \
+          openstreetmap-tile-server:${{ github.sha }} \
+          run 2>&1 | tee /tmp/run-without-import.log; then
+          echo "ERROR: Container should have failed but succeeded"
+          exit 1
+        fi
+        
+        # Verify the error message contains expected text
+        if ! grep -q "ERROR: Database has not been imported yet" /tmp/run-without-import.log; then
+          echo "ERROR: Expected error message not found"
+          cat /tmp/run-without-import.log
+          exit 1
+        fi
+        
+        if ! grep -q "You need to run the 'import' command first" /tmp/run-without-import.log; then
+          echo "ERROR: Expected guidance message not found"
+          cat /tmp/run-without-import.log
+          exit 1
+        fi
+        
+        echo "SUCCESS: Run mode correctly failed with helpful error message"
+    -
       name: Import Luxembourg
       run: |
         docker run --rm --shm-size=128M \
@@ -92,6 +119,24 @@ jobs:
           run
         sleep 30
         docker logs osm-www
+    -
+      name: Verify server is running
+      run: |
+        # Check that the server is actually running and responding
+        if ! docker ps | grep -q osm-www; then
+          echo "ERROR: Container osm-www is not running"
+          docker logs osm-www
+          exit 1
+        fi
+        
+        # Verify renderd socket exists (indicates successful startup)
+        docker exec osm-www test -S /run/renderd/renderd.sock || {
+          echo "ERROR: Renderd socket does not exist"
+          docker logs osm-www
+          exit 1
+        }
+        
+        echo "SUCCESS: Server is running and renderd socket exists"
     -
       name: Download tiles
       run: |
