@@ -2,14 +2,25 @@
 
 set -euo pipefail
 
-function createPostgresConfig() {
-  cp /etc/postgresql/$PG_VERSION/main/postgresql.custom.conf.tmpl /etc/postgresql/$PG_VERSION/main/conf.d/postgresql.custom.conf
-  sudo -u postgres echo "autovacuum = $AUTOVACUUM" >> /etc/postgresql/$PG_VERSION/main/conf.d/postgresql.custom.conf
-  cat /etc/postgresql/$PG_VERSION/main/conf.d/postgresql.custom.conf
+function waitForPostgres() {
+    echo "Waiting for PostgreSQL at ${PGHOST}:${PGPORT}..."
+    until PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -c '\q' 2>/dev/null; do
+        echo "PostgreSQL is unavailable - sleeping"
+        sleep 2
+    done
+    echo "PostgreSQL is up!"
 }
 
-function setPostgresPassword() {
-    sudo -u postgres psql -c "ALTER USER renderer PASSWORD '${PGPASSWORD:-renderer}'"
+function setupDatabase() {
+    echo "Setting up database..."
+    # Check if database already has PostGIS extension
+    if ! PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -c "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -q 1; then
+        echo "Creating PostGIS extension..."
+        PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+        PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -c "CREATE EXTENSION IF NOT EXISTS hstore;"
+        PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -c "ALTER TABLE geometry_columns OWNER TO ${PGUSER:-renderer};"
+        PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -c "ALTER TABLE spatial_ref_sys OWNER TO ${PGUSER:-renderer};"
+    fi
 }
 
 if [ "$#" -ne 1 ]; then
@@ -41,24 +52,15 @@ if [ ! -f /data/style/mapnik.xml ]; then
 fi
 
 if [ "$1" == "import" ]; then
-    # Ensure that database directory is in right state
-    mkdir -p /data/database/postgres/
+    # Ensure that database directory exists
+    mkdir -p /data/database/
     chown renderer: /data/database/
-    chown -R postgres: /var/lib/postgresql /data/database/postgres/
-    if [ ! -f /data/database/postgres/PG_VERSION ]; then
-        sudo -u postgres /usr/lib/postgresql/$PG_VERSION/bin/pg_ctl -D /data/database/postgres/ initdb -o "--locale C.UTF-8"
-    fi
 
-    # Initialize PostgreSQL
-    createPostgresConfig
-    service postgresql start
-    sudo -u postgres createuser renderer
-    sudo -u postgres createdb -E UTF8 -O renderer gis
-    sudo -u postgres psql -d gis -c "CREATE EXTENSION postgis;"
-    sudo -u postgres psql -d gis -c "CREATE EXTENSION hstore;"
-    sudo -u postgres psql -d gis -c "ALTER TABLE geometry_columns OWNER TO renderer;"
-    sudo -u postgres psql -d gis -c "ALTER TABLE spatial_ref_sys OWNER TO renderer;"
-    setPostgresPassword
+    # Wait for PostgreSQL to be ready
+    waitForPostgres
+    
+    # Setup database extensions
+    setupDatabase
 
     # Download Luxembourg as sample if no data is provided
     if [ ! -f /data/region.osm.pbf ] && [ -z "${DOWNLOAD_PBF:-}" ]; then
@@ -96,7 +98,7 @@ if [ "$1" == "import" ]; then
     fi
 
     # Import data
-    sudo -u renderer osm2pgsql -d gis --create --slim -G --hstore  \
+    sudo -u renderer osm2pgsql -d ${PGDATABASE:-gis} -H ${PGHOST:-postgres} -P ${PGPORT:-5432} -U ${PGUSER:-renderer} --create --slim -G --hstore  \
       --tag-transform-script /data/style/${NAME_LUA:-openstreetmap-carto.lua}  \
       --number-processes ${THREADS:-4}  \
       -S /data/style/${NAME_STYLE:-openstreetmap-carto.style}  \
@@ -112,7 +114,7 @@ if [ "$1" == "import" ]; then
 
     # Create indexes
     if [ -f /data/style/${NAME_SQL:-indexes.sql} ]; then
-        sudo -u postgres psql -d gis -f /data/style/${NAME_SQL:-indexes.sql}
+        PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -f /data/style/${NAME_SQL:-indexes.sql}
     fi
 
     #Import external data
@@ -124,8 +126,6 @@ if [ "$1" == "import" ]; then
     # Register that data has changed for mod_tile caching purposes
     sudo -u renderer touch /data/database/planet-import-complete
 
-    service postgresql stop
-
     exit 0
 fi
 
@@ -134,10 +134,6 @@ if [ "$1" == "run" ]; then
     rm -rf /tmp/*
 
     # migrate old files
-    if [ -f /data/database/PG_VERSION ] && ! [ -d /data/database/postgres/ ]; then
-        mkdir /data/database/postgres/
-        mv /data/database/* /data/database/postgres/
-    fi
     if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/database/flat_nodes.bin ]; then
         mv /nodes/flat_nodes.bin /data/database/flat_nodes.bin
     fi
@@ -153,19 +149,16 @@ if [ "$1" == "run" ]; then
         cp /data/database/planet-import-complete /data/tiles/planet-import-complete
     fi
 
-    # Fix postgres data privileges
-    chown -R postgres: /var/lib/postgresql/ /data/database/postgres/
+    # Wait for PostgreSQL to be ready
+    waitForPostgres
 
     # Configure Apache CORS
     if [ "${ALLOW_CORS:-}" == "enabled" ] || [ "${ALLOW_CORS:-}" == "1" ]; then
         echo "export APACHE_ARGUMENTS='-D ALLOW_CORS'" >> /etc/apache2/envvars
     fi
 
-    # Initialize PostgreSQL and Apache
-    createPostgresConfig
-    service postgresql start
+    # Initialize Apache
     service apache2 restart
-    setPostgresPassword
 
     # Configure renderd threads
     sed -i -E "s/num_threads=[0-9]+/num_threads=${THREADS:-4}/g" /etc/renderd.conf
@@ -189,8 +182,6 @@ if [ "$1" == "run" ]; then
     sudo -u renderer renderd -f -c /etc/renderd.conf &
     child=$!
     wait "$child"
-
-    service postgresql stop
 
     exit 0
 fi

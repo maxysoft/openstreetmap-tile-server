@@ -5,18 +5,34 @@
 
 This container allows you to easily set up an OpenStreetMap PNG tile server given a `.osm.pbf` file. It is based on the [latest Ubuntu 18.04 LTS guide](https://switch2osm.org/serving-tiles/manually-building-a-tile-server-18-04-lts/) from [switch2osm.org](https://switch2osm.org/) and therefore uses the default OpenStreetMap style.
 
+**Note:** This tile server requires an external PostGIS database. The tile server container connects to a separate PostgreSQL/PostGIS instance (using the `postgis/postgis:18-3.6` image).
+
 ## Setting up the server
 
-First create a Docker volume to hold the PostgreSQL database that will contain the OpenStreetMap data:
+First create Docker volumes to hold the PostgreSQL database and tiles:
 
     docker volume create osm-data
+    docker volume create osm-tiles
+
+Next, start a PostGIS database instance:
+
+```
+docker run -d --name postgres \
+    -e POSTGRES_DB=gis \
+    -e POSTGRES_USER=renderer \
+    -e POSTGRES_PASSWORD=renderer \
+    -v osm-data:/var/lib/postgresql/data \
+    --shm-size=256M \
+    postgis/postgis:18-3.6
+```
 
 Next, download an `.osm.pbf` extract from geofabrik.de for the region that you're interested in. You can then start importing it into PostgreSQL by running a container and mounting the file as `/data/region.osm.pbf`. For example:
 
 ```
-docker run \
+docker run --rm \
     -v /absolute/path/to/luxembourg.osm.pbf:/data/region.osm.pbf \
-    -v osm-data:/data/database/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
     overv/openstreetmap-tile-server \
     import
 ```
@@ -32,11 +48,12 @@ Also when running on an isolated system, the default `index.html` from the conta
 If your import is an extract of the planet and has polygonal bounds associated with it, like those from [geofabrik.de](https://download.geofabrik.de/), then it is possible to set your server up for automatic updates. Make sure to reference both the OSM file and the polygon file during the `import` process to facilitate this, and also include the `UPDATES=enabled` variable:
 
 ```
-docker run \
+docker run --rm \
     -e UPDATES=enabled \
     -v /absolute/path/to/luxembourg.osm.pbf:/data/region.osm.pbf \
     -v /absolute/path/to/luxembourg.poly:/data/region.poly \
-    -v osm-data:/data/database/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
     overv/openstreetmap-tile-server \
     import
 ```
@@ -51,10 +68,11 @@ Therefore, when you only have a `.osm.pbf` file but not a `.poly` file, you shou
 It is also possible to let the container download files for you rather than mounting them in advance by using the `DOWNLOAD_PBF` and `DOWNLOAD_POLY` parameters:
 
 ```
-docker run \
+docker run --rm \
     -e DOWNLOAD_PBF=https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf \
     -e DOWNLOAD_POLY=https://download.geofabrik.de/europe/luxembourg.poly \
-    -v osm-data:/data/database/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
     overv/openstreetmap-tile-server \
     import
 ```
@@ -64,7 +82,7 @@ docker run \
 By default the container will use openstreetmap-carto if it is not specified. However, you can modify the style at run-time. Be aware you need the style mounted at `run` AND `import` as the Lua script needs to be run:
 
 ```
-docker run \
+docker run --rm \
     -e DOWNLOAD_PBF=https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf \
     -e DOWNLOAD_POLY=https://download.geofabrik.de/europe/luxembourg.poly \
     -e NAME_LUA=sample.lua \
@@ -72,7 +90,8 @@ docker run \
     -e NAME_MML=project.mml \
     -e NAME_SQL=test.sql \
     -v /home/user/openstreetmap-carto-modified:/data/style/ \
-    -v osm-data:/data/database/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
     overv/openstreetmap-tile-server \
     import
 ```
@@ -87,12 +106,14 @@ If you do not see the expected style upon `run` double check your paths as the s
 
 ## Running the server
 
-Run the server like this:
+Run the server like this (assuming you already have the PostGIS container running from the setup step):
 
 ```
 docker run \
     -p 8080:80 \
-    -v osm-data:/data/database/ \
+    -v osm-tiles:/data/tiles/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
     -d overv/openstreetmap-tile-server \
     run
 ```
@@ -101,23 +122,21 @@ Your tiles will now be available at `http://localhost:8080/tile/{z}/{x}/{y}.png`
 
 ### Using Docker Compose
 
-The `docker-compose.yml` file included with this repository shows how the aforementioned command can be used with Docker Compose to run your server.
+The `docker-compose.yml` file included with this repository shows how the aforementioned commands can be used with Docker Compose to run your server with a separate PostGIS database. To use it:
+
+1. First, import your data:
+```
+docker-compose run --rm -v /absolute/path/to/luxembourg.osm.pbf:/data/region.osm.pbf map import
+```
+
+2. Then start the services:
+```
+docker-compose up -d
+```
 
 ### Preserving rendered tiles
 
-Tiles that have already been rendered will be stored in `/data/tiles/`. To make sure that this data survives container restarts, you should create another volume for it:
-
-```
-docker volume create osm-tiles
-docker run \
-    -p 8080:80 \
-    -v osm-data:/data/database/ \
-    -v osm-tiles:/data/tiles/ \
-    -d overv/openstreetmap-tile-server \
-    run
-```
-
-**If you do this, then make sure to also run the import with the `osm-tiles` volume to make sure that caching works properly across updates!**
+Tiles that have already been rendered will be stored in `/data/tiles/`. The tiles volume is already configured in the examples above to persist rendered tiles across container restarts.
 
 ### Enabling automatic updating (optional)
 
@@ -129,8 +148,9 @@ docker run \
     -e REPLICATION_URL=https://planet.openstreetmap.org/replication/minute/ \
     -e MAX_INTERVAL_SECONDS=60 \
     -e UPDATES=enabled \
-    -v osm-data:/data/database/ \
     -v osm-tiles:/data/tiles/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
     -d overv/openstreetmap-tile-server \
     run
 ```
@@ -154,8 +174,9 @@ docker run \
     -e EXPIRY_TOUCHFROM=13 \
     -e EXPIRY_DELETEFROM=19 \
     -e EXPIRY_MAXZOOM=20 \
-    -v osm-data:/data/database/ \
     -v osm-tiles:/data/tiles/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
     -d overv/openstreetmap-tile-server \
     run
 ```
@@ -167,7 +188,9 @@ To enable the `Access-Control-Allow-Origin` header to be able to retrieve tiles 
 ```
 docker run \
     -p 8080:80 \
-    -v osm-data:/data/database/ \
+    -v osm-tiles:/data/tiles/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
     -e ALLOW_CORS=enabled \
     -d overv/openstreetmap-tile-server \
     run
@@ -175,15 +198,17 @@ docker run \
 
 ### Connecting to Postgres
 
-To connect to the PostgreSQL database inside the container, make sure to expose port 5432:
+To connect to the external PostgreSQL database, expose port 5432 on the PostGIS container:
 
 ```
-docker run \
-    -p 8080:80 \
+docker run -d --name postgres \
+    -e POSTGRES_DB=gis \
+    -e POSTGRES_USER=renderer \
+    -e POSTGRES_PASSWORD=renderer \
+    -v osm-data:/var/lib/postgresql/data \
     -p 5432:5432 \
-    -v osm-data:/data/database/ \
-    -d overv/openstreetmap-tile-server \
-    run
+    --shm-size=256M \
+    postgis/postgis:18-3.6
 ```
 
 Use the user `renderer` and the database `gis` to connect.
@@ -192,17 +217,7 @@ Use the user `renderer` and the database `gis` to connect.
 psql -h localhost -U renderer gis
 ```
 
-The default password is `renderer`, but it can be changed using the `PGPASSWORD` environment variable:
-
-```
-docker run \
-    -p 8080:80 \
-    -p 5432:5432 \
-    -e PGPASSWORD=secret \
-    -v osm-data:/data/database/ \
-    -d overv/openstreetmap-tile-server \
-    run
-```
+The default password is `renderer`, but it can be changed by setting the `POSTGRES_PASSWORD` environment variable when starting the PostGIS container, and the `PGPASSWORD` environment variable when starting the tile server.
 
 ## Performance tuning and tweaking
 
@@ -215,7 +230,9 @@ The import and tile serving processes use 4 threads by default, but this number 
 docker run \
     -p 8080:80 \
     -e THREADS=24 \
-    -v osm-data:/data/database/ \
+    -v osm-tiles:/data/tiles/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
     -d overv/openstreetmap-tile-server \
     run
 ```
@@ -227,31 +244,26 @@ The import and tile serving processes use 800 MB RAM cache by default, but this 
 docker run \
     -p 8080:80 \
     -e "OSM2PGSQL_EXTRA_ARGS=-C 4096" \
-    -v osm-data:/data/database/ \
+    -v osm-tiles:/data/tiles/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
     -d overv/openstreetmap-tile-server \
     run
 ```
 
 ### AUTOVACUUM
 
-The database use the autovacuum feature by default. This behavior can be changed with `AUTOVACUUM` environment variable. For example:
-```
-docker run \
-    -p 8080:80 \
-    -e AUTOVACUUM=off \
-    -v osm-data:/data/database/ \
-    -d overv/openstreetmap-tile-server \
-    run
-```
+The PostgreSQL database has the autovacuum feature enabled by default. You can configure this in the PostGIS container by setting appropriate PostgreSQL configuration parameters. See the [PostGIS documentation](https://hub.docker.com/r/postgis/postgis) for details.
 
 ### FLAT_NODES
 
 If you are planning to import the entire planet or you are running into memory errors then you may want to enable the `--flat-nodes` option for osm2pgsql. You can then use it during the import process as follows:
 
 ```
-docker run \
+docker run --rm \
     -v /absolute/path/to/luxembourg.osm.pbf:/data/region.osm.pbf \
-    -v osm-data:/data/database/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
     -e "FLAT_NODES=enabled" \
     overv/openstreetmap-tile-server \
     import
@@ -267,16 +279,26 @@ You can find an example of the import performance to expect with this image on t
 
 ### ERROR: could not resize shared memory segment / No space left on device
 
-If you encounter such entries in the log, it will mean that the default shared memory limit (64 MB) is too low for the container and it should be raised:
+If you encounter such entries in the log, it will mean that the default shared memory limit (64 MB) is too low for the containers and it should be raised:
 ```
 renderd[121]: ERROR: failed to render TILE default 2 0-3 0-3
 renderd[121]: reason: Postgis Plugin: ERROR: could not resize shared memory segment "/PostgreSQL.790133961" to 12615680 bytes: ### No space left on device
 ```
-To raise it use `--shm-size` parameter. For example:
+To raise it use `--shm-size` parameter on both the PostGIS container and the tile server container. For example:
 ```
+docker run -d --name postgres \
+    -e POSTGRES_DB=gis \
+    -e POSTGRES_USER=renderer \
+    -e POSTGRES_PASSWORD=renderer \
+    -v osm-data:/var/lib/postgresql/data \
+    --shm-size="256m" \
+    postgis/postgis:18-3.6
+
 docker run \
     -p 8080:80 \
-    -v osm-data:/data/database/ \
+    -v osm-tiles:/data/tiles/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
     --shm-size="192m" \
     -d overv/openstreetmap-tile-server \
     run

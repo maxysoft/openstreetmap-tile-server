@@ -1,14 +1,69 @@
-version: '3'
+version: '3.8'
 
 services:
+  postgres:
+    image: postgis/postgis:18-3.6
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gis
+      POSTGRES_USER: renderer
+      POSTGRES_PASSWORD: renderer
+      # PostgreSQL performance tuning for production
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C.UTF-8"
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "work_mem=64MB"
+      - "-c"
+      - "maintenance_work_mem=256MB"
+      - "-c"
+      - "max_connections=200"
+      - "-c"
+      - "effective_cache_size=2GB"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "max_wal_size=2GB"
+      - "-c"
+      - "jit=off"
+    volumes:
+      - osm-data:/var/lib/postgresql/data
+    shm_size: 256MB
+    networks:
+      - tile-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U renderer -d gis"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   map:
     image: overv/openstreetmap-tile-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: renderer
+      PGPASSWORD: renderer
+      PGDATABASE: gis
     volumes:
-      - osm-data:/data/database/
+      - osm-tiles:/data/tiles/
     ports:
       - "8080:80"
     command: "run"
+    shm_size: 256MB
+    networks:
+      - tile-network
+
+networks:
+  tile-network:
+    driver: bridge
 
 volumes:
   osm-data:
-    external: true
+  osm-tiles:

@@ -1,7 +1,7 @@
 FROM ubuntu:22.04 AS compiler-common
 ENV DEBIAN_FRONTEND=noninteractive
-ENV LANG C.UTF-8
-ENV LC_ALL C.UTF-8
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 
 RUN apt-get update \
 && apt-get install -y --no-install-recommends \
@@ -10,8 +10,9 @@ RUN apt-get update \
  git-core unzip unrar \
 && locale-gen $LANG && update-locale LANG=$LANG \
 && sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
-&& wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
-&& apt-get update && apt-get -y upgrade
+&& wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg \
+&& apt-get update \
+&& apt-get -y upgrade
 
 ###########################################################################################################
 
@@ -46,7 +47,6 @@ ENV AUTOVACUUM=on
 ENV UPDATES=disabled
 ENV REPLICATION_URL=https://planet.openstreetmap.org/replication/hour/
 ENV MAX_INTERVAL_SECONDS=3600
-ENV PG_VERSION 15
 
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
@@ -70,16 +70,15 @@ RUN apt-get update \
  osm2pgsql \
  osmium-tool \
  osmosis \
- postgresql-$PG_VERSION \
- postgresql-$PG_VERSION-postgis-3 \
- postgresql-$PG_VERSION-postgis-3-scripts \
- postgis \
+ postgresql-client-18 \
  python-is-python3 \
  python3-mapnik \
  python3-lxml \
  python3-psycopg2 \
  python3-shapely \
  python3-pip \
+ python3-yaml \
+ python3-requests \
  renderd \
  sudo \
  vim \
@@ -89,27 +88,22 @@ RUN apt-get update \
 
 RUN adduser --disabled-password --gecos "" renderer
 
-# Get Noto Emoji Regular font, despite it being deprecated by Google
-RUN wget https://github.com/googlefonts/noto-emoji/blob/9a5261d871451f9b5183c93483cbd68ed916b1e9/fonts/NotoEmoji-Regular.ttf?raw=true --content-disposition -P /usr/share/fonts/
+# Download fonts in a single layer
+RUN wget https://github.com/googlefonts/noto-emoji/blob/9a5261d871451f9b5183c93483cbd68ed916b1e9/fonts/NotoEmoji-Regular.ttf?raw=true --content-disposition -P /usr/share/fonts/ \
+&& wget https://github.com/stamen/terrain-classic/blob/master/fonts/unifont-Medium.ttf?raw=true --content-disposition -P /usr/share/fonts/
 
-# For some reason this one is missing in the default packages
-RUN wget https://github.com/stamen/terrain-classic/blob/master/fonts/unifont-Medium.ttf?raw=true --content-disposition -P /usr/share/fonts/
+# Install Python and Node.js packages with cache cleanup
+RUN pip3 install --no-cache-dir osmium \
+&& npm install -g carto@1.2.0 \
+&& npm cache clean --force \
+&& rm -rf /root/.npm /tmp/*
 
-# Install python libraries
-RUN pip3 install \
- requests \
- osmium \
- pyyaml
-
-# Install carto for stylesheet
-RUN npm install -g carto@1.2.0
-
-# Configure Apache
+# Configure Apache in a single layer
+COPY apache.conf /etc/apache2/sites-available/000-default.conf
 RUN echo "LoadModule tile_module /usr/lib/apache2/modules/mod_tile.so" >> /etc/apache2/conf-available/mod_tile.conf \
 && echo "LoadModule headers_module /usr/lib/apache2/modules/mod_headers.so" >> /etc/apache2/conf-available/mod_headers.conf \
-&& a2enconf mod_tile && a2enconf mod_headers
-COPY apache.conf /etc/apache2/sites-available/000-default.conf
-RUN ln -sf /dev/stdout /var/log/apache2/access.log \
+&& a2enconf mod_tile && a2enconf mod_headers \
+&& ln -sf /dev/stdout /var/log/apache2/access.log \
 && ln -sf /dev/stderr /var/log/apache2/error.log
 
 # leaflet
@@ -130,12 +124,12 @@ RUN chmod +x /usr/bin/openstreetmap-tiles-update-expire.sh \
 && ln -s /home/renderer/src/mod_tile/osmosis-db_replag /usr/bin/osmosis-db_replag \
 && echo "* * * * *   renderer    openstreetmap-tiles-update-expire.sh\n" >> /etc/crontab
 
-# Configure PosgtreSQL
-COPY postgresql.custom.conf.tmpl /etc/postgresql/$PG_VERSION/main/
-RUN chown -R postgres:postgres /var/lib/postgresql \
-&& chown postgres:postgres /etc/postgresql/$PG_VERSION/main/postgresql.custom.conf.tmpl \
-&& echo "host all all 0.0.0.0/0 scram-sha-256" >> /etc/postgresql/$PG_VERSION/main/pg_hba.conf \
-&& echo "host all all ::/0 scram-sha-256" >> /etc/postgresql/$PG_VERSION/main/pg_hba.conf
+# Configure environment variables for external PostGIS connection
+ENV PGHOST=postgres
+ENV PGPORT=5432
+ENV PGUSER=renderer
+ENV PGPASSWORD=renderer
+ENV PGDATABASE=gis
 
 # Create volume directories
 RUN mkdir -p /run/renderd/ \
@@ -145,10 +139,8 @@ RUN mkdir -p /run/renderd/ \
   &&  chown  -R  renderer:  /data/  \
   &&  chown  -R  renderer:  /home/renderer/src/  \
   &&  chown  -R  renderer:  /run/renderd  \
-  &&  mv  /var/lib/postgresql/$PG_VERSION/main/  /data/database/postgres/  \
-  &&  mv  /var/cache/renderd/tiles/            /data/tiles/     \
+  &&  mkdir  -p  /data/tiles/  \
   &&  chown  -R  renderer: /data/tiles \
-  &&  ln  -s  /data/database/postgres  /var/lib/postgresql/$PG_VERSION/main             \
   &&  ln  -s  /data/style              /home/renderer/src/openstreetmap-carto  \
   &&  ln  -s  /data/tiles              /var/cache/renderd/tiles                \
 ;
@@ -171,4 +163,4 @@ COPY --from=compiler-stylesheet /root/openstreetmap-carto /home/renderer/src/ope
 COPY run.sh /
 ENTRYPOINT ["/run.sh"]
 CMD []
-EXPOSE 80 5432
+EXPOSE 80

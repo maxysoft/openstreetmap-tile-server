@@ -65,16 +65,22 @@ jobs:
         cache-from : type=gha,scope=${{ github.workflow }}:${{ env.PLATFORM }}
         cache-to   : type=gha,scope=${{ github.workflow }}:${{ env.PLATFORM }},mode=max
     -
-      name: Import Luxembourg
+      name: Start PostgreSQL
       if  : ${{ matrix.mode == 'build-and-test' }}
       run : |
         docker  volume  create  ${VOLUME}
-        docker  run  --rm  --shm-size=128M  -v ${VOLUME}:${MOUNT}  -e UPDATES=enabled  ${IMAGE}:${TAG}  import
+        docker  run  -d  --name  postgres  -e POSTGRES_DB=gis  -e POSTGRES_USER=renderer  -e POSTGRES_PASSWORD=renderer  -v ${VOLUME}:/var/lib/postgresql/data  --shm-size=256M  postgis/postgis:18-3.6
+        sleep 10
+    -
+      name: Import Luxembourg
+      if  : ${{ matrix.mode == 'build-and-test' }}
+      run : |
+        docker  run  --rm  --shm-size=128M  --link postgres:postgres  -e PGHOST=postgres  -e UPDATES=enabled  ${IMAGE}:${TAG}  import
     -
       name: Start server
       if  : ${{ matrix.mode == 'build-and-test' }}
       run : |
-        docker  run  --shm-size=128M  -v ${VOLUME}:${MOUNT}  -e UPDATES=enabled  -p 80:80  -d  --name ${CONTAINER}  ${IMAGE}:${TAG}  run
+        docker  run  --shm-size=128M  --link postgres:postgres  -e PGHOST=postgres  -e UPDATES=enabled  -p 80:80  -d  --name ${CONTAINER}  ${IMAGE}:${TAG}  run
         sleep 30
         docker  logs  ${CONTAINER}
     -
@@ -121,6 +127,7 @@ jobs:
       if  : ${{ matrix.mode == 'build-and-test' }}
       run : |
         docker  rm  --force  --volumes  ${CONTAINER}
+        docker  rm  --force  --volumes  postgres
         docker  volume  rm  --force  ${VOLUME}
         docker  rmi  --force  ${IMAGE}:${TAG}
 
