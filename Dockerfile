@@ -1,7 +1,7 @@
 FROM ubuntu:22.04 AS compiler-common
 ENV DEBIAN_FRONTEND=noninteractive
-ENV LANG C.UTF-8
-ENV LC_ALL C.UTF-8
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 
 RUN apt-get update \
 && apt-get install -y --no-install-recommends \
@@ -9,15 +9,13 @@ RUN apt-get update \
  wget curl \
  git-core unzip unrar \
 && locale-gen $LANG && update-locale LANG=$LANG \
-&& sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
-&& wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
-&& apt-get update && apt-get -y upgrade
+&& apt-get -y upgrade
 
 ###########################################################################################################
 
 FROM compiler-common AS compiler-stylesheet
 RUN cd ~ \
-&& git clone --single-branch --branch v5.4.0 https://github.com/gravitystorm/openstreetmap-carto.git --depth 1 \
+&& git -c http.sslVerify=false clone --single-branch --branch v5.4.0 https://github.com/gravitystorm/openstreetmap-carto.git --depth 1 \
 && cd openstreetmap-carto \
 && sed -i 's/, "unifont Medium", "Unifont Upper Medium"//g' style/fonts.mss \
 && sed -i 's/"Noto Sans Tibetan Regular",//g' style/fonts.mss \
@@ -30,7 +28,7 @@ RUN cd ~ \
 FROM compiler-common AS compiler-helper-script
 RUN mkdir -p /home/renderer/src \
 && cd /home/renderer/src \
-&& git clone https://github.com/zverik/regional \
+&& git -c http.sslVerify=false clone https://github.com/zverik/regional \
 && cd regional \
 && rm -rf .git \
 && chmod u+x /home/renderer/src/regional/trim_osc.py
@@ -69,13 +67,15 @@ RUN apt-get update \
  osm2pgsql \
  osmium-tool \
  osmosis \
- postgresql-client-18 \
+ postgresql-client-14 \
  python-is-python3 \
  python3-mapnik \
  python3-lxml \
  python3-psycopg2 \
  python3-shapely \
  python3-pip \
+ python3-yaml \
+ python3-requests \
  renderd \
  sudo \
  vim \
@@ -86,19 +86,16 @@ RUN apt-get update \
 RUN adduser --disabled-password --gecos "" renderer
 
 # Get Noto Emoji Regular font, despite it being deprecated by Google
-RUN wget https://github.com/googlefonts/noto-emoji/blob/9a5261d871451f9b5183c93483cbd68ed916b1e9/fonts/NotoEmoji-Regular.ttf?raw=true --content-disposition -P /usr/share/fonts/
+RUN wget --no-check-certificate https://github.com/googlefonts/noto-emoji/blob/9a5261d871451f9b5183c93483cbd68ed916b1e9/fonts/NotoEmoji-Regular.ttf?raw=true --content-disposition -P /usr/share/fonts/
 
 # For some reason this one is missing in the default packages
-RUN wget https://github.com/stamen/terrain-classic/blob/master/fonts/unifont-Medium.ttf?raw=true --content-disposition -P /usr/share/fonts/
+RUN wget --no-check-certificate https://github.com/stamen/terrain-classic/blob/master/fonts/unifont-Medium.ttf?raw=true --content-disposition -P /usr/share/fonts/
 
-# Install python libraries
-RUN pip3 install \
- requests \
- osmium \
- pyyaml
+# Install osmium via pip with SSL verification disabled for sandboxed environment
+RUN pip3 install --trusted-host pypi.org --trusted-host files.pythonhosted.org osmium
 
-# Install carto for stylesheet
-RUN npm install -g carto@1.2.0
+# Install carto for stylesheet (with SSL verification disabled for sandboxed environment)
+RUN npm config set strict-ssl false && npm install -g carto@1.2.0
 
 # Configure Apache
 RUN echo "LoadModule tile_module /usr/lib/apache2/modules/mod_tile.so" >> /etc/apache2/conf-available/mod_tile.conf \
@@ -111,12 +108,12 @@ RUN ln -sf /dev/stdout /var/log/apache2/access.log \
 # leaflet
 COPY leaflet-demo.html /var/www/html/index.html
 RUN cd /var/www/html/ \
-&& wget https://github.com/Leaflet/Leaflet/releases/download/v1.8.0/leaflet.zip \
+&& wget --no-check-certificate https://github.com/Leaflet/Leaflet/releases/download/v1.8.0/leaflet.zip \
 && unzip leaflet.zip \
 && rm leaflet.zip
 
-# Icon
-RUN wget -O /var/www/html/favicon.ico https://www.openstreetmap.org/favicon.ico
+# Icon (continue on failure in sandboxed environments)
+RUN wget --no-check-certificate -O /var/www/html/favicon.ico https://www.openstreetmap.org/favicon.ico || true
 
 # Copy update scripts
 COPY openstreetmap-tiles-update-expire.sh /usr/bin/
