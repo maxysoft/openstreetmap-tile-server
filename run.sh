@@ -135,8 +135,15 @@ if [ "$1" == "import" ]; then
         chown renderer: /data/database/flat_nodes.bin
     fi
 
+    # Create database functions (required for openstreetmap-carto)
+    if [ -f /data/style/functions.sql ]; then
+        echo "Creating database functions..."
+        PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -f /data/style/functions.sql
+    fi
+
     # Create indexes
     if [ -f /data/style/${NAME_SQL:-indexes.sql} ]; then
+        echo "Creating indexes..."
         PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -f /data/style/${NAME_SQL:-indexes.sql}
     fi
 
