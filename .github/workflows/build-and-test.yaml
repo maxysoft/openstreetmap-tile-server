@@ -148,14 +148,27 @@ jobs:
       name: Environment
       run : |
         echo  IMAGE=$(echo ${{ env.IMAGE }} | tr '[:upper:]' '[:lower:]')  >>$GITHUB_ENV
-        echo  DOCKERHUB_IMAGE=$([ "${{ secrets.DOCKERHUB_USERNAME }}" != '' ] && [ "${{ secrets.DOCKERHUB_PASSWORD }}" != "" ] && echo "$IMAGE")  >>$GITHUB_ENV
     -
-      name: Docker meta
-      id: meta
+      name: Docker meta (with DockerHub)
+      if: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+      id: meta-with-dockerhub
       uses: docker/metadata-action@v5
       with:
         images: |
-          ${{ env.DOCKERHUB_IMAGE }}
+          ${{ env.IMAGE }}
+          ghcr.io/${{ env.IMAGE }}
+        tags: |
+          type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+    -
+      name: Docker meta (without DockerHub)
+      if: ${{ secrets.DOCKERHUB_USERNAME == '' || secrets.DOCKERHUB_TOKEN == '' }}
+      id: meta-without-dockerhub
+      uses: docker/metadata-action@v5
+      with:
+        images: |
           ghcr.io/${{ env.IMAGE }}
         tags: |
           type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
@@ -173,10 +186,10 @@ jobs:
     -
       name: Login to DockerHub
       uses: docker/login-action@v3
-      if: ${{ env.DOCKERHUB_IMAGE != '' }}
+      if: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_PASSWORD }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
     -
       name: Login to GHCR
       uses: docker/login-action@v3
@@ -193,8 +206,8 @@ jobs:
         platforms  : linux/amd64,linux/arm64/v8
         context    : .
         file       : ./Dockerfile
-        tags       : ${{ steps.meta.outputs.tags }}
-        labels     : ${{ steps.meta.outputs.labels }}
+        tags       : ${{ steps.meta-with-dockerhub.outputs.tags || steps.meta-without-dockerhub.outputs.tags }}
+        labels     : ${{ steps.meta-with-dockerhub.outputs.labels || steps.meta-without-dockerhub.outputs.labels }}
         cache-from: |
           type=gha,scope=${{ github.workflow }}:linux/amd64
           type=gha,scope=${{ github.workflow }}:linux/arm64/v8
