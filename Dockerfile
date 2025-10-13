@@ -144,6 +144,7 @@ RUN mkdir -p /run/renderd/ \
   &&  mkdir  -p  /data/tiles/  \
   &&  chown  -R  renderer: /data/tiles \
   &&  ln  -s  /data/style              /home/renderer/src/openstreetmap-carto  \
+  &&  mkdir  -p  /var/cache/renderd  \
   &&  ln  -s  /data/tiles              /var/cache/renderd/tiles                \
 ;
 
