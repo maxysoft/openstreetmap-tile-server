@@ -9,6 +9,9 @@ RUN apt-get update \
  wget curl \
  git-core unzip unrar \
 && locale-gen $LANG && update-locale LANG=$LANG \
+&& sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
+&& wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg \
+&& apt-get update \
 && apt-get -y upgrade
 
 ###########################################################################################################
@@ -67,7 +70,7 @@ RUN apt-get update \
  osm2pgsql \
  osmium-tool \
  osmosis \
- postgresql-client-14 \
+ postgresql-client-18 \
  python-is-python3 \
  python3-mapnik \
  python3-lxml \
