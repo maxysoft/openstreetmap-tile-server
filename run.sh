@@ -52,6 +52,25 @@ fi
 # carto build
 if [ ! -f /data/style/mapnik.xml ]; then
     cd /data/style/
+    
+    # Configure PostgreSQL connection parameters in project.mml
+    if [ -f ${NAME_MML:-project.mml} ]; then
+        # Update the osm2pgsql section with external PostgreSQL connection parameters
+        sed -i 's/dbname: "gis"/dbname: "'${PGDATABASE:-gis}'"/' ${NAME_MML:-project.mml}
+        
+        # Add host, port, user, and password if not connecting to local socket
+        if [ "${PGHOST:-postgres}" != "localhost" ] && [ "${PGHOST:-postgres}" != "127.0.0.1" ]; then
+            # Add host parameter after dbname line
+            sed -i '/dbname: "'${PGDATABASE:-gis}'"/a\    host: "'${PGHOST:-postgres}'"' ${NAME_MML:-project.mml}
+            # Add port parameter
+            sed -i '/host: "'${PGHOST:-postgres}'"/a\    port: "'${PGPORT:-5432}'"' ${NAME_MML:-project.mml}
+            # Add user parameter
+            sed -i '/port: "'${PGPORT:-5432}'"/a\    user: "'${PGUSER:-renderer}'"' ${NAME_MML:-project.mml}
+            # Add password parameter
+            sed -i '/user: "'${PGUSER:-renderer}'"/a\    password: "'${PGPASSWORD:-renderer}'"' ${NAME_MML:-project.mml}
+        fi
+    fi
+    
     carto ${NAME_MML:-project.mml} > mapnik.xml
 fi
 
