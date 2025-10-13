@@ -72,11 +72,19 @@ jobs:
       name: Test run without import (should fail with clear error)
       run: |
         echo "Testing that run mode fails gracefully when database not imported..."
-        if docker run --rm --shm-size=128M \
+        set +e  # Temporarily disable exit on error
+        docker run --rm --shm-size=128M \
           --link postgres:postgres \
           -e PGHOST=postgres \
           openstreetmap-tile-server:${{ github.sha }} \
-          run 2>&1 | tee /tmp/run-without-import.log; then
+          run > /tmp/run-without-import.log 2>&1
+        EXIT_CODE=$?
+        set -e  # Re-enable exit on error
+        
+        echo "Container exit code: $EXIT_CODE"
+        cat /tmp/run-without-import.log
+        
+        if [ $EXIT_CODE -eq 0 ]; then
           echo "ERROR: Container should have failed but succeeded"
           exit 1
         fi
@@ -84,13 +92,11 @@ jobs:
         # Verify the error message contains expected text
         if ! grep -q "ERROR: Database has not been imported yet" /tmp/run-without-import.log; then
           echo "ERROR: Expected error message not found"
-          cat /tmp/run-without-import.log
           exit 1
         fi
         
         if ! grep -q "You need to run the 'import' command first" /tmp/run-without-import.log; then
           echo "ERROR: Expected guidance message not found"
-          cat /tmp/run-without-import.log
           exit 1
         fi
         
