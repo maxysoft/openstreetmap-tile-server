@@ -1,67 +1,68 @@
 version: '3.8'
 
 services:
-  postgres:
+  tile-server-db:
     image: postgis/postgis:18-3.6
+    container_name: tile-server-db
+    hostname: tile-server-db
     restart: unless-stopped
+    shm_size: 1GB
     environment:
-      POSTGRES_DB: gis
-      POSTGRES_USER: renderer
-      POSTGRES_PASSWORD: renderer
+      POSTGRES_DB: osm_tiles
+      POSTGRES_USER: osm_usr
+      POSTGRES_PASSWORD: Random_Password
       # PostgreSQL performance tuning for production
       POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C.UTF-8"
-    command:
-      - "postgres"
-      - "-c"
-      - "shared_buffers=512MB"
-      - "-c"
-      - "work_mem=64MB"
-      - "-c"
-      - "maintenance_work_mem=256MB"
-      - "-c"
-      - "max_connections=200"
-      - "-c"
-      - "effective_cache_size=2GB"
-      - "-c"
-      - "random_page_cost=1.1"
-      - "-c"
-      - "max_wal_size=2GB"
-      - "-c"
-      - "jit=off"
+    command: >
+      postgres
+      -c shared_buffers=512MB
+      -c maintenance_work_mem=256MB
+      -c autovacuum_work_mem=2GB
+      -c work_mem=64MB
+      -c effective_cache_size=2GB
+      -c synchronous_commit=off
+      -c max_wal_size=2GB
+      -c checkpoint_timeout=10min
+      -c checkpoint_completion_target=0.9
+      -c max_connections=200
+      -c random_page_cost=1.1
+      -c jit=off
     volumes:
       - osm-data:/var/lib/postgresql/data
-    shm_size: 256MB
-    networks:
-      - tile-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U renderer -d gis"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - tile-server-net
 
-  map:
+  tile-server:
     image: overv/openstreetmap-tile-server
+    container_name: tile-server
+    hostname: tile-server
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
+    shm_size: 256MB
+    command: "run"
     environment:
-      PGHOST: postgres
+      PGHOST: tile-server-db
       PGPORT: 5432
-      PGUSER: renderer
-      PGPASSWORD: renderer
-      PGDATABASE: gis
+      PGUSER: osm_usr
+      PGPASSWORD: Random_Password
+      PGDATABASE: osm_tiles
     volumes:
       - osm-tiles:/data/tiles/
     ports:
       - "8080:80"
-    command: "run"
-    shm_size: 256MB
+    depends_on:
+      tile-server-db:
+        condition: service_healthy
     networks:
-      - tile-network
+      - tile-server-net
 
 networks:
-  tile-network:
+  tile-server-net:
+    name: tile-server-net
     driver: bridge
 
 volumes:
