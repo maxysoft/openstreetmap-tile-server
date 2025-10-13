@@ -24,6 +24,8 @@ RUN cd ~ \
 && sed -i 's/"Noto Sans Tibetan Regular",//g' style/fonts.mss \
 && sed -i 's/"Noto Sans Tibetan Bold",//g' style/fonts.mss \
 && sed -i 's/Noto Sans Syriac Eastern Regular/Noto Sans Syriac Regular/g' style/fonts.mss \
+&& sed -i 's/"Noto Sans Syriac Black",//g' style/fonts.mss \
+&& sed -i 's/"Noto Emoji Bold",//g' style/fonts.mss \
 && rm -rf .git
 
 ###########################################################################################################

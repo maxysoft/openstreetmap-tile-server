@@ -75,6 +75,8 @@ jobs:
           --link postgres:postgres \
           -e PGHOST=postgres \
           -e UPDATES=enabled \
+          -e DOWNLOAD_PBF=https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf \
+          -e DOWNLOAD_POLY=https://download.geofabrik.de/europe/luxembourg.poly \
           openstreetmap-tile-server:${{ github.sha }} \
           import
     -
