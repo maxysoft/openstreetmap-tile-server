@@ -147,6 +147,34 @@ jobs:
       name: Checkout
       uses: actions/checkout@v4
     -
+      name: Extract version info
+      id: version
+      run: |
+        # Extract openstreetmap-carto version from Dockerfile
+        CARTO_VERSION=$(grep -oP 'git clone.*--branch \K[^ ]+' Dockerfile | head -1)
+        echo "carto_version=${CARTO_VERSION}" >> $GITHUB_OUTPUT
+        
+        # Extract base image and convert to tag format (e.g., ubuntu:22.04 -> ubuntu-22)
+        BASE_IMAGE=$(grep -oP '^FROM \K[^ ]+' Dockerfile | head -1)
+        BASE_NAME=$(echo $BASE_IMAGE | cut -d: -f1)
+        BASE_VERSION=$(echo $BASE_IMAGE | cut -d: -f2 | cut -d. -f1)
+        BASE_TAG="${BASE_NAME}-${BASE_VERSION}"
+        echo "base_tag=${BASE_TAG}" >> $GITHUB_OUTPUT
+        
+        # Get short commit SHA
+        SHORT_SHA=$(git rev-parse --short HEAD)
+        echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+        
+        # Create full version tag
+        FULL_TAG="${CARTO_VERSION}-${BASE_TAG}-${SHORT_SHA}"
+        echo "full_tag=${FULL_TAG}" >> $GITHUB_OUTPUT
+        
+        echo "Version info:"
+        echo "  Carto version: ${CARTO_VERSION}"
+        echo "  Base tag: ${BASE_TAG}"
+        echo "  Short SHA: ${SHORT_SHA}"
+        echo "  Full tag: ${FULL_TAG}"
+    -
       name: Set up QEMU
       uses: docker/setup-qemu-action@v3
       with:
@@ -165,6 +193,7 @@ jobs:
           ghcr.io/${{ github.repository }}
         tags: |
           type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+          type=raw,value=${{ steps.version.outputs.full_tag }}
           type=semver,pattern={{version}}
           type=semver,pattern={{major}}.{{minor}}
           type=semver,pattern={{major}}
@@ -178,6 +207,7 @@ jobs:
           ghcr.io/${{ github.repository }}
         tags: |
           type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+          type=raw,value=${{ steps.version.outputs.full_tag }}
           type=semver,pattern={{version}}
           type=semver,pattern={{major}}.{{minor}}
           type=semver,pattern={{major}}

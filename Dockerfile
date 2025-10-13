@@ -102,9 +102,8 @@ RUN pip3 install --no-cache-dir osmium \
 
 # Configure Apache in a single layer
 COPY apache.conf /etc/apache2/sites-available/000-default.conf
-RUN echo "LoadModule tile_module /usr/lib/apache2/modules/mod_tile.so" >> /etc/apache2/conf-available/mod_tile.conf \
-&& echo "LoadModule headers_module /usr/lib/apache2/modules/mod_headers.so" >> /etc/apache2/conf-available/mod_headers.conf \
-&& a2enconf mod_tile && a2enconf mod_headers \
+RUN a2enmod tile \
+&& a2enmod headers \
 && ln -sf /dev/stdout /var/log/apache2/access.log \
 && ln -sf /dev/stderr /var/log/apache2/error.log
 
@@ -144,6 +143,8 @@ RUN mkdir -p /run/renderd/ \
   &&  mkdir  -p  /data/tiles/  \
   &&  chown  -R  renderer: /data/tiles \
   &&  ln  -s  /data/style              /home/renderer/src/openstreetmap-carto  \
+  &&  mkdir  -p  /var/cache/renderd  \
+  &&  chown  renderer:  /var/cache/renderd  \
   &&  ln  -s  /data/tiles              /var/cache/renderd/tiles                \
 ;
 
