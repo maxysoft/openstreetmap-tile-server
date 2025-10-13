@@ -182,16 +182,36 @@ if [ "$1" == "run" ]; then
     # Wait for PostgreSQL to be ready
     waitForPostgres
 
+    # Configure renderd threads
+    sed -i -E "s/num_threads=[0-9]+/num_threads=${THREADS:-4}/g" /etc/renderd.conf
+
+    # Start renderd first and wait for socket
+    echo "Starting renderd..."
+    sudo -u renderer renderd -f -c /etc/renderd.conf &
+    RENDERD_PID=$!
+
+    # Wait for renderd socket to be created
+    echo "Waiting for renderd socket..."
+    for i in {1..30}; do
+        if [ -S /run/renderd/renderd.sock ]; then
+            echo "Renderd socket is ready!"
+            break
+        fi
+        if [ $i -eq 30 ]; then
+            echo "ERROR: Renderd socket not created after 30 seconds"
+            exit 1
+        fi
+        sleep 1
+    done
+
     # Configure Apache CORS
     if [ "${ALLOW_CORS:-}" == "enabled" ] || [ "${ALLOW_CORS:-}" == "1" ]; then
         echo "export APACHE_ARGUMENTS='-D ALLOW_CORS'" >> /etc/apache2/envvars
     fi
 
-    # Initialize Apache
+    # Initialize Apache after renderd is ready
+    echo "Starting Apache..."
     service apache2 restart
-
-    # Configure renderd threads
-    sed -i -E "s/num_threads=[0-9]+/num_threads=${THREADS:-4}/g" /etc/renderd.conf
 
     # start cron job to trigger consecutive updates
     if [ "${UPDATES:-}" == "enabled" ] || [ "${UPDATES:-}" == "1" ]; then
@@ -205,13 +225,11 @@ if [ "$1" == "run" ]; then
 
     # Run while handling docker stop's SIGTERM
     stop_handler() {
-        kill -TERM "$child"
+        kill -TERM "$RENDERD_PID"
     }
     trap stop_handler SIGTERM
 
-    sudo -u renderer renderd -f -c /etc/renderd.conf &
-    child=$!
-    wait "$child"
+    wait "$RENDERD_PID"
 
     exit 0
 fi
