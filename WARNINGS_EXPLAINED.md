@@ -48,13 +48,17 @@ The openstreetmap-carto style defines font sets for different languages and scri
 ### Why They're Non-Critical
 1. **Font Fallback**: Mapnik uses a font fallback mechanism - if one font is missing, it tries the next in the font set
 2. **Regional Fonts**: Many of these fonts are for specific scripts (Syriac, Emoji, Tibetan, etc.)
-3. **Already Filtered**: The Dockerfile already removes some problematic fonts that aren't available:
+3. **Already Filtered**: The Dockerfile removes problematic fonts that aren't available:
    ```dockerfile
    sed -i 's/, "unifont Medium", "Unifont Upper Medium"//g' style/fonts.mss
    sed -i 's/"Noto Sans Tibetan Regular",//g' style/fonts.mss
    sed -i 's/"Noto Sans Tibetan Bold",//g' style/fonts.mss
    sed -i 's/Noto Sans Syriac Eastern Regular/Noto Sans Syriac Regular/g' style/fonts.mss
+   sed -i 's/"Noto Sans Syriac Black",//g' style/fonts.mss
+   sed -i 's/"Noto Emoji Bold",//g' style/fonts.mss
    ```
+
+**Note**: The most common font warnings (Noto Sans Syriac Black, Noto Emoji Bold) have been addressed in the Dockerfile to reduce log noise.
 
 ### Impact on Map Display
 **Impact: MINIMAL - Only affects specific language text rendering**
@@ -88,11 +92,11 @@ These warnings affect:
 
 ### Do These Warnings Matter?
 
-| Warning Type | Impact on Luxembourg Test | Impact on Production | Should Fix? |
-|--------------|---------------------------|---------------------|-------------|
-| Style warnings (admin-low-zoom) | None - not visible at test zoom levels | Minimal - only low-zoom admin boundaries | Optional |
-| Font warnings (Noto Sans Syriac Black) | None - not used in Luxembourg | Minor - only for Syriac text | Optional |
-| Font warnings (Noto Emoji Bold) | None - emojis rare in map data | Minor - emoji POI names may not bold | Optional |
+| Warning Type | Impact on Luxembourg Test | Impact on Production | Status |
+|--------------|---------------------------|---------------------|--------|
+| Style warnings (admin-low-zoom) | None - not visible at test zoom levels | Minimal - only low-zoom admin boundaries | Informational only |
+| Font warnings (Noto Sans Syriac Black) | None - not used in Luxembourg | Minor - only for Syriac text | ✅ Fixed |
+| Font warnings (Noto Emoji Bold) | None - emojis rare in map data | Minor - emoji POI names may not bold | ✅ Fixed |
 
 ### Recommendation
 
@@ -103,26 +107,28 @@ These warnings affect:
    - OR remove font references from style to silence warnings
 3. **Style warnings can be ignored** - they're informational only
 
-### If You Want to Fix Them Anyway
+### Fixes Implemented
 
-#### Option 1: Install Missing Fonts (increases image size)
+**Font Warnings**: The most common font warnings have been addressed by removing references to unavailable fonts:
+- "Noto Sans Syriac Black" - Removed from style/fonts.mss
+- "Noto Emoji Bold" - Removed from style/fonts.mss
+
+These fonts had fallback alternatives, so their removal doesn't impact rendering quality.
+
+### Alternative Options (if needed)
+
+#### Option 1: Install Missing Fonts (increases image size by ~50MB)
 ```dockerfile
 RUN apt-get install -y --no-install-recommends \
     fonts-noto-extra \
     fonts-noto-color-emoji
 ```
 
-#### Option 2: Remove References (reduces warnings)
+#### Option 2: Additional Font Filtering (if other warnings appear)
 ```dockerfile
-# Add to the existing font filtering in Dockerfile
-RUN sed -i 's/"Noto Sans Syriac Black",//g' style/fonts.mss \
- && sed -i 's/"Noto Emoji Bold",//g' style/fonts.mss
+# Add more font filtering as needed
+RUN sed -i 's/"Font Name Here",//g' style/fonts.mss
 ```
-
-#### Option 3: Ignore Warnings (recommended for most use cases)
-- Accept that warnings are informational
-- Focus on functional issues only
-- Test rendered tiles for quality
 
 ## Conclusion
 
