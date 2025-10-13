@@ -88,24 +88,22 @@ RUN apt-get update \
 
 RUN adduser --disabled-password --gecos "" renderer
 
-# Get Noto Emoji Regular font, despite it being deprecated by Google
-RUN wget https://github.com/googlefonts/noto-emoji/blob/9a5261d871451f9b5183c93483cbd68ed916b1e9/fonts/NotoEmoji-Regular.ttf?raw=true --content-disposition -P /usr/share/fonts/
+# Download fonts in a single layer
+RUN wget https://github.com/googlefonts/noto-emoji/blob/9a5261d871451f9b5183c93483cbd68ed916b1e9/fonts/NotoEmoji-Regular.ttf?raw=true --content-disposition -P /usr/share/fonts/ \
+&& wget https://github.com/stamen/terrain-classic/blob/master/fonts/unifont-Medium.ttf?raw=true --content-disposition -P /usr/share/fonts/
 
-# For some reason this one is missing in the default packages
-RUN wget https://github.com/stamen/terrain-classic/blob/master/fonts/unifont-Medium.ttf?raw=true --content-disposition -P /usr/share/fonts/
+# Install Python and Node.js packages with cache cleanup
+RUN pip3 install --no-cache-dir osmium \
+&& npm install -g carto@1.2.0 \
+&& npm cache clean --force \
+&& rm -rf /root/.npm /tmp/*
 
-# Install osmium via pip
-RUN pip3 install osmium
-
-# Install carto for stylesheet
-RUN npm install -g carto@1.2.0
-
-# Configure Apache
+# Configure Apache in a single layer
+COPY apache.conf /etc/apache2/sites-available/000-default.conf
 RUN echo "LoadModule tile_module /usr/lib/apache2/modules/mod_tile.so" >> /etc/apache2/conf-available/mod_tile.conf \
 && echo "LoadModule headers_module /usr/lib/apache2/modules/mod_headers.so" >> /etc/apache2/conf-available/mod_headers.conf \
-&& a2enconf mod_tile && a2enconf mod_headers
-COPY apache.conf /etc/apache2/sites-available/000-default.conf
-RUN ln -sf /dev/stdout /var/log/apache2/access.log \
+&& a2enconf mod_tile && a2enconf mod_headers \
+&& ln -sf /dev/stdout /var/log/apache2/access.log \
 && ln -sf /dev/stderr /var/log/apache2/error.log
 
 # leaflet
