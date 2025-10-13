@@ -27,6 +27,37 @@ function setupDatabase() {
     fi
 }
 
+function checkDatabaseImported() {
+    echo "Checking if database has been imported..."
+    # Check if the planet_osm_polygon table exists (created during import)
+    if ! PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -c "SELECT 1 FROM information_schema.tables WHERE table_name='planet_osm_polygon'" 2>/dev/null | grep -q 1; then
+        echo "ERROR: Database has not been imported yet!"
+        echo ""
+        echo "You need to run the 'import' command first to import OSM data into the database."
+        echo ""
+        echo "Example using pre-downloaded file:"
+        echo "  docker run --rm -v /path/to/region.osm.pbf:/data/region.osm.pbf \\"
+        echo "    --link postgres:postgres -e PGHOST=postgres \\"
+        echo "    overv/openstreetmap-tile-server import"
+        echo ""
+        echo "Example with automatic download:"
+        echo "  docker run --rm \\"
+        echo "    -e DOWNLOAD_PBF=https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf \\"
+        echo "    -e DOWNLOAD_POLY=https://download.geofabrik.de/europe/luxembourg.poly \\"
+        echo "    --link postgres:postgres -e PGHOST=postgres \\"
+        echo "    overv/openstreetmap-tile-server import"
+        echo ""
+        echo "After import completes successfully, you can then run the tile server with:"
+        echo "  docker run -p 8080:80 -v osm-tiles:/data/tiles \\"
+        echo "    --link postgres:postgres -e PGHOST=postgres \\"
+        echo "    overv/openstreetmap-tile-server run"
+        echo ""
+        return 1
+    fi
+    echo "Database import check passed."
+    return 0
+}
+
 if [ "$#" -ne 1 ]; then
     echo "usage: <import|run>"
     echo "commands:"
@@ -184,6 +215,11 @@ if [ "$1" == "run" ]; then
 
     # Wait for PostgreSQL to be ready
     waitForPostgres
+
+    # Check if database has been imported
+    if ! checkDatabaseImported; then
+        exit 1
+    fi
 
     # Configure renderd threads
     sed -i -E "s/num_threads=[0-9]+/num_threads=${THREADS:-4}/g" /etc/renderd.conf
