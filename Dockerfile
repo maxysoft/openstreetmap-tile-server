@@ -46,7 +46,6 @@ ENV AUTOVACUUM=on
 ENV UPDATES=disabled
 ENV REPLICATION_URL=https://planet.openstreetmap.org/replication/hour/
 ENV MAX_INTERVAL_SECONDS=3600
-ENV PG_VERSION 15
 
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
@@ -70,10 +69,7 @@ RUN apt-get update \
  osm2pgsql \
  osmium-tool \
  osmosis \
- postgresql-$PG_VERSION \
- postgresql-$PG_VERSION-postgis-3 \
- postgresql-$PG_VERSION-postgis-3-scripts \
- postgis \
+ postgresql-client-18 \
  python-is-python3 \
  python3-mapnik \
  python3-lxml \
@@ -130,12 +126,12 @@ RUN chmod +x /usr/bin/openstreetmap-tiles-update-expire.sh \
 && ln -s /home/renderer/src/mod_tile/osmosis-db_replag /usr/bin/osmosis-db_replag \
 && echo "* * * * *   renderer    openstreetmap-tiles-update-expire.sh\n" >> /etc/crontab
 
-# Configure PosgtreSQL
-COPY postgresql.custom.conf.tmpl /etc/postgresql/$PG_VERSION/main/
-RUN chown -R postgres:postgres /var/lib/postgresql \
-&& chown postgres:postgres /etc/postgresql/$PG_VERSION/main/postgresql.custom.conf.tmpl \
-&& echo "host all all 0.0.0.0/0 scram-sha-256" >> /etc/postgresql/$PG_VERSION/main/pg_hba.conf \
-&& echo "host all all ::/0 scram-sha-256" >> /etc/postgresql/$PG_VERSION/main/pg_hba.conf
+# Configure environment variables for external PostGIS connection
+ENV PGHOST=postgres
+ENV PGPORT=5432
+ENV PGUSER=renderer
+ENV PGPASSWORD=renderer
+ENV PGDATABASE=gis
 
 # Create volume directories
 RUN mkdir -p /run/renderd/ \
@@ -145,10 +141,8 @@ RUN mkdir -p /run/renderd/ \
   &&  chown  -R  renderer:  /data/  \
   &&  chown  -R  renderer:  /home/renderer/src/  \
   &&  chown  -R  renderer:  /run/renderd  \
-  &&  mv  /var/lib/postgresql/$PG_VERSION/main/  /data/database/postgres/  \
-  &&  mv  /var/cache/renderd/tiles/            /data/tiles/     \
+  &&  mkdir  -p  /data/tiles/  \
   &&  chown  -R  renderer: /data/tiles \
-  &&  ln  -s  /data/database/postgres  /var/lib/postgresql/$PG_VERSION/main             \
   &&  ln  -s  /data/style              /home/renderer/src/openstreetmap-carto  \
   &&  ln  -s  /data/tiles              /var/cache/renderd/tiles                \
 ;
@@ -171,4 +165,4 @@ COPY --from=compiler-stylesheet /root/openstreetmap-carto /home/renderer/src/ope
 COPY run.sh /
 ENTRYPOINT ["/run.sh"]
 CMD []
-EXPOSE 80 5432
+EXPOSE 80

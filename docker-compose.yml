@@ -1,14 +1,33 @@
 version: '3'
 
 services:
+  postgres:
+    image: postgis/postgis:18-3.6
+    environment:
+      POSTGRES_DB: gis
+      POSTGRES_USER: renderer
+      POSTGRES_PASSWORD: renderer
+    volumes:
+      - osm-data:/var/lib/postgresql/data
+    shm_size: 256MB
+
   map:
     image: overv/openstreetmap-tile-server
+    depends_on:
+      - postgres
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: renderer
+      PGPASSWORD: renderer
+      PGDATABASE: gis
     volumes:
-      - osm-data:/data/database/
+      - osm-tiles:/data/tiles/
     ports:
       - "8080:80"
     command: "run"
+    shm_size: 256MB
 
 volumes:
   osm-data:
-    external: true
+  osm-tiles:

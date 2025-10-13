@@ -16,8 +16,8 @@ OSMOSIS_BIN=osmosis
 OSM2PGSQL_BIN=osm2pgsql
 TRIM_BIN=/home/renderer/src/regional/trim_osc.py
 
-DBNAME=gis
-OSM2PGSQL_OPTIONS="-d $DBNAME -G --hstore --tag-transform-script /data/style/${NAME_LUA:-openstreetmap-carto.lua} --number-processes ${THREADS:-4} -S /data/style/${NAME_STYLE:-openstreetmap-carto.style} ${OSM2PGSQL_EXTRA_ARGS}"
+DBNAME=${PGDATABASE:-gis}
+OSM2PGSQL_OPTIONS="-d $DBNAME -H ${PGHOST:-postgres} -P ${PGPORT:-5432} -U ${PGUSER:-renderer} -G --hstore --tag-transform-script /data/style/${NAME_LUA:-openstreetmap-carto.lua} --number-processes ${THREADS:-4} -S /data/style/${NAME_STYLE:-openstreetmap-carto.style} ${OSM2PGSQL_EXTRA_ARGS}"
 
 # flat-nodes
 if [ -f /data/database/flat_nodes.bin ]; then
@@ -31,7 +31,7 @@ fi
 # This area will usually correspond to the data originally loaded.
 #------------------------------------------------------------------------------
 TRIM_POLY_FILE="/data/database/region.poly"
-TRIM_OPTIONS="-d $DBNAME"
+TRIM_OPTIONS="-d $DBNAME -H ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer}"
 TRIM_REGION_OPTIONS="-p $TRIM_POLY_FILE"
 
 BASE_DIR=/data/database
