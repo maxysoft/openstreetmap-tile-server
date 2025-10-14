@@ -216,9 +216,90 @@ if [ "$1" == "run" ]; then
     # Wait for PostgreSQL to be ready
     waitForPostgres
 
-    # Check if database has been imported
+    # Check if database has been imported, and if not, perform auto-import if DOWNLOAD_PBF is set
     if ! checkDatabaseImported; then
-        exit 1
+        # If DOWNLOAD_PBF is set, automatically perform import on first run
+        if [ -n "${DOWNLOAD_PBF:-}" ]; then
+            echo "Database not imported yet, but DOWNLOAD_PBF is set. Performing automatic import..."
+            echo "This is a one-time process that may take a while depending on the size of the data."
+            echo ""
+            
+            # Ensure that database directory exists
+            mkdir -p /data/database/
+            chown renderer: /data/database/
+
+            # Setup database extensions
+            setupDatabase
+
+            # Download the PBF file
+            echo "INFO: Download PBF file: $DOWNLOAD_PBF"
+            wget ${WGET_ARGS:-} "$DOWNLOAD_PBF" -O /data/region.osm.pbf
+            if [ -n "${DOWNLOAD_POLY:-}" ]; then
+                echo "INFO: Download PBF-POLY file: $DOWNLOAD_POLY"
+                wget ${WGET_ARGS:-} "$DOWNLOAD_POLY" -O /data/region.poly
+            fi
+
+            if [ "${UPDATES:-}" == "enabled" ] || [ "${UPDATES:-}" == "1" ]; then
+                # determine and set osmosis_replication_timestamp (for consecutive updates)
+                REPLICATION_TIMESTAMP=`osmium fileinfo -g header.option.osmosis_replication_timestamp /data/region.osm.pbf`
+
+                # initial setup of osmosis workspace (for consecutive updates)
+                sudo -E -u renderer openstreetmap-tiles-update-expire.sh $REPLICATION_TIMESTAMP
+            fi
+
+            # copy polygon file if available
+            if [ -f /data/region.poly ]; then
+                cp /data/region.poly /data/database/region.poly
+                chown renderer: /data/database/region.poly
+            fi
+
+            # flat-nodes
+            if [ "${FLAT_NODES:-}" == "enabled" ] || [ "${FLAT_NODES:-}" == "1" ]; then
+                OSM2PGSQL_EXTRA_ARGS="${OSM2PGSQL_EXTRA_ARGS:-} --flat-nodes /data/database/flat_nodes.bin"
+            fi
+
+            # Import data
+            sudo -E -u renderer osm2pgsql -d ${PGDATABASE:-gis} -H ${PGHOST:-postgres} -P ${PGPORT:-5432} -U ${PGUSER:-renderer} --create --slim -G --hstore  \
+              --tag-transform-script /data/style/${NAME_LUA:-openstreetmap-carto.lua}  \
+              --number-processes ${THREADS:-4}  \
+              -S /data/style/${NAME_STYLE:-openstreetmap-carto.style}  \
+              /data/region.osm.pbf  \
+              ${OSM2PGSQL_EXTRA_ARGS:-}  \
+            ;
+
+            # old flat-nodes dir
+            if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/database/flat_nodes.bin ]; then
+                mv /nodes/flat_nodes.bin /data/database/flat_nodes.bin
+                chown renderer: /data/database/flat_nodes.bin
+            fi
+
+            # Create database functions (required for openstreetmap-carto)
+            if [ -f /data/style/functions.sql ]; then
+                echo "Creating database functions..."
+                PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -f /data/style/functions.sql
+            fi
+
+            # Create indexes
+            if [ -f /data/style/${NAME_SQL:-indexes.sql} ]; then
+                echo "Creating indexes..."
+                PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -f /data/style/${NAME_SQL:-indexes.sql}
+            fi
+
+            #Import external data
+            chown -R renderer: /home/renderer/src/ /data/style/
+            if [ -f /data/style/scripts/get-external-data.py ] && [ -f /data/style/external-data.yml ]; then
+                sudo -E -u renderer python3 /data/style/scripts/get-external-data.py -c /data/style/external-data.yml -D /data/style/data
+            fi
+
+            # Register that data has changed for mod_tile caching purposes
+            sudo -u renderer touch /data/database/planet-import-complete
+
+            echo ""
+            echo "Import completed successfully! Proceeding to start the tile server..."
+            echo ""
+        else
+            exit 1
+        fi
     fi
 
     # Configure renderd threads
