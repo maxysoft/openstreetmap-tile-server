@@ -27,42 +27,18 @@ function setupDatabase() {
     fi
 }
 
-function checkDatabaseImported() {
-    echo "Checking if database has been imported..."
-    # Check if the planet_osm_polygon table exists (created during import)
-    if ! PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -c "SELECT 1 FROM information_schema.tables WHERE table_name='planet_osm_polygon'" 2>/dev/null | grep -q 1; then
-        echo "ERROR: Database has not been imported yet!"
-        echo ""
-        echo "You need to run the 'import' command first to import OSM data into the database."
-        echo ""
-        echo "Example using pre-downloaded file:"
-        echo "  docker run --rm -v /path/to/region.osm.pbf:/data/region.osm.pbf \\"
-        echo "    --link postgres:postgres -e PGHOST=postgres \\"
-        echo "    overv/openstreetmap-tile-server import"
-        echo ""
-        echo "Example with automatic download:"
-        echo "  docker run --rm \\"
-        echo "    -e DOWNLOAD_PBF=https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf \\"
-        echo "    -e DOWNLOAD_POLY=https://download.geofabrik.de/europe/luxembourg.poly \\"
-        echo "    --link postgres:postgres -e PGHOST=postgres \\"
-        echo "    overv/openstreetmap-tile-server import"
-        echo ""
-        echo "After import completes successfully, you can then run the tile server with:"
-        echo "  docker run -p 8080:80 -v osm-tiles:/data/tiles \\"
-        echo "    --link postgres:postgres -e PGHOST=postgres \\"
-        echo "    overv/openstreetmap-tile-server run"
-        echo ""
-        return 1
-    fi
-    echo "Database import check passed."
-    return 0
-}
 
-if [ "$#" -ne 1 ]; then
-    echo "usage: <import|run>"
-    echo "commands:"
-    echo "    import: Set up the database and import /data/region.osm.pbf"
-    echo "    run: Runs Apache and renderd to serve tiles at /tile/{z}/{x}/{y}.png"
+
+# Support legacy command arguments for backward compatibility
+# New behavior: if no argument provided, automatically detect and import if needed, then run
+COMMAND="${1:-}"
+
+if [ -n "$COMMAND" ] && [ "$COMMAND" != "import" ] && [ "$COMMAND" != "run" ]; then
+    echo "usage: [import|run]"
+    echo "commands (optional):"
+    echo "    import: Set up the database and import /data/region.osm.pbf, then exit"
+    echo "    run: Check database, auto-import if needed, then run tile server"
+    echo "    (no command): Same as 'run' - auto-import if needed, then run tile server"
     echo "environment variables:"
     echo "    THREADS: defines number of threads used for importing / tile rendering"
     echo "    UPDATES: consecutive updates (enabled/disabled)"
@@ -105,14 +81,16 @@ if [ ! -f /data/style/mapnik.xml ]; then
     carto ${NAME_MML:-project.mml} > mapnik.xml
 fi
 
-if [ "$1" == "import" ]; then
+# Function to perform the import process
+function performImport() {
+    echo "========================================"
+    echo "Starting OSM data import process..."
+    echo "========================================"
+    
     # Ensure that database directory exists
     mkdir -p /data/database/
     chown renderer: /data/database/
 
-    # Wait for PostgreSQL to be ready
-    waitForPostgres
-    
     # Setup database extensions
     setupDatabase
 
@@ -186,92 +164,125 @@ if [ "$1" == "import" ]; then
 
     # Register that data has changed for mod_tile caching purposes
     sudo -u renderer touch /data/database/planet-import-complete
+    
+    echo "========================================"
+    echo "Import completed successfully!"
+    echo "========================================"
+}
 
-    exit 0
-fi
-
-if [ "$1" == "run" ]; then
-    # Clean /tmp
-    rm -rf /tmp/*
-
-    # migrate old files
-    if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/database/flat_nodes.bin ]; then
-        mv /nodes/flat_nodes.bin /data/database/flat_nodes.bin
-    fi
-    if [ -f /data/tiles/data.poly ] && ! [ -f /data/database/region.poly ]; then
-        mv /data/tiles/data.poly /data/database/region.poly
-    fi
-
-    # sync planet-import-complete file
-    if [ -f /data/tiles/planet-import-complete ] && ! [ -f /data/database/planet-import-complete ]; then
-        cp /data/tiles/planet-import-complete /data/database/planet-import-complete
-    fi
-    if ! [ -f /data/tiles/planet-import-complete ] && [ -f /data/database/planet-import-complete ]; then
-        cp /data/database/planet-import-complete /data/tiles/planet-import-complete
-    fi
-
-    # Ensure proper permissions for tile directory
-    chown -R renderer: /data/tiles /var/cache/renderd
-
+# Legacy support: if explicitly called with "import", do import and exit
+if [ "$COMMAND" == "import" ]; then
     # Wait for PostgreSQL to be ready
     waitForPostgres
-
-    # Check if database has been imported
-    if ! checkDatabaseImported; then
-        exit 1
-    fi
-
-    # Configure renderd threads
-    sed -i -E "s/num_threads=[0-9]+/num_threads=${THREADS:-4}/g" /etc/renderd.conf
-
-    # Start renderd first and wait for socket
-    echo "Starting renderd..."
-    sudo -u renderer renderd -f -c /etc/renderd.conf &
-    RENDERD_PID=$!
-
-    # Wait for renderd socket to be created
-    echo "Waiting for renderd socket..."
-    for i in {1..30}; do
-        if [ -S /run/renderd/renderd.sock ]; then
-            echo "Renderd socket is ready!"
-            break
-        fi
-        if [ $i -eq 30 ]; then
-            echo "ERROR: Renderd socket not created after 30 seconds"
-            exit 1
-        fi
-        sleep 1
-    done
-
-    # Configure Apache CORS
-    if [ "${ALLOW_CORS:-}" == "enabled" ] || [ "${ALLOW_CORS:-}" == "1" ]; then
-        echo "export APACHE_ARGUMENTS='-D ALLOW_CORS'" >> /etc/apache2/envvars
-    fi
-
-    # Initialize Apache after renderd is ready
-    echo "Starting Apache..."
-    service apache2 restart
-
-    # start cron job to trigger consecutive updates
-    if [ "${UPDATES:-}" == "enabled" ] || [ "${UPDATES:-}" == "1" ]; then
-        /etc/init.d/cron start
-        sudo -u renderer touch /var/log/tiles/run.log; tail -f /var/log/tiles/run.log >> /proc/1/fd/1 &
-        sudo -u renderer touch /var/log/tiles/osmosis.log; tail -f /var/log/tiles/osmosis.log >> /proc/1/fd/1 &
-        sudo -u renderer touch /var/log/tiles/expiry.log; tail -f /var/log/tiles/expiry.log >> /proc/1/fd/1 &
-        sudo -u renderer touch /var/log/tiles/osm2pgsql.log; tail -f /var/log/tiles/osm2pgsql.log >> /proc/1/fd/1 &
-
-    fi
-
-    # Run while handling docker stop's SIGTERM
-    stop_handler() {
-        kill -TERM "$RENDERD_PID"
-    }
-    trap stop_handler SIGTERM
-
-    wait "$RENDERD_PID"
-
+    
+    performImport
+    
     exit 0
 fi
 
-echo "invalid command"
-exit 1
+# Default behavior: Check database and auto-import if needed, then run tile server
+# This runs when COMMAND is "run" or empty (no command specified)
+# Clean /tmp
+rm -rf /tmp/*
+
+# migrate old files
+if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/database/flat_nodes.bin ]; then
+    mv /nodes/flat_nodes.bin /data/database/flat_nodes.bin
+fi
+if [ -f /data/tiles/data.poly ] && ! [ -f /data/database/region.poly ]; then
+    mv /data/tiles/data.poly /data/database/region.poly
+fi
+
+# sync planet-import-complete file
+if [ -f /data/tiles/planet-import-complete ] && ! [ -f /data/database/planet-import-complete ]; then
+    cp /data/tiles/planet-import-complete /data/database/planet-import-complete
+fi
+if ! [ -f /data/tiles/planet-import-complete ] && [ -f /data/database/planet-import-complete ]; then
+    cp /data/database/planet-import-complete /data/tiles/planet-import-complete
+fi
+
+# Ensure proper permissions for tile directory
+chown -R renderer: /data/tiles /var/cache/renderd
+
+# Wait for PostgreSQL to be ready
+waitForPostgres
+
+# Check if database has been imported
+echo "Checking if database has been imported..."
+if ! PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -c "SELECT 1 FROM information_schema.tables WHERE table_name='planet_osm_polygon'" 2>/dev/null | grep -q 1; then
+    echo "Database is empty - import required."
+    
+    # Check if we have import data available
+    if [ -f /data/region.osm.pbf ] || [ -n "${DOWNLOAD_PBF:-}" ]; then
+        echo "Import data available - starting automatic import..."
+        performImport
+    else
+        echo ""
+        echo "========================================"
+        echo "ERROR: Database is empty and no import data is available!"
+        echo "========================================"
+        echo ""
+        echo "Please provide OSM data in one of the following ways:"
+        echo ""
+        echo "1. Set DOWNLOAD_PBF environment variable:"
+        echo "   -e DOWNLOAD_PBF=https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf"
+        echo ""
+        echo "2. Mount a PBF file:"
+        echo "   -v /path/to/region.osm.pbf:/data/region.osm.pbf"
+        echo ""
+        exit 1
+    fi
+else
+    echo "Database already contains imported OSM data - skipping import."
+fi
+
+# Configure renderd threads
+sed -i -E "s/num_threads=[0-9]+/num_threads=${THREADS:-4}/g" /etc/renderd.conf
+
+# Start renderd first and wait for socket
+echo "Starting renderd..."
+sudo -u renderer renderd -f -c /etc/renderd.conf &
+RENDERD_PID=$!
+
+# Wait for renderd socket to be created
+echo "Waiting for renderd socket..."
+for i in {1..30}; do
+    if [ -S /run/renderd/renderd.sock ]; then
+        echo "Renderd socket is ready!"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo "ERROR: Renderd socket not created after 30 seconds"
+        exit 1
+    fi
+    sleep 1
+done
+
+# Configure Apache CORS
+if [ "${ALLOW_CORS:-}" == "enabled" ] || [ "${ALLOW_CORS:-}" == "1" ]; then
+    echo "export APACHE_ARGUMENTS='-D ALLOW_CORS'" >> /etc/apache2/envvars
+fi
+
+# Initialize Apache after renderd is ready
+echo "Starting Apache..."
+service apache2 restart
+
+# start cron job to trigger consecutive updates
+if [ "${UPDATES:-}" == "enabled" ] || [ "${UPDATES:-}" == "1" ]; then
+    /etc/init.d/cron start
+    sudo -u renderer touch /var/log/tiles/run.log; tail -f /var/log/tiles/run.log >> /proc/1/fd/1 &
+    sudo -u renderer touch /var/log/tiles/osmosis.log; tail -f /var/log/tiles/osmosis.log >> /proc/1/fd/1 &
+    sudo -u renderer touch /var/log/tiles/expiry.log; tail -f /var/log/tiles/expiry.log >> /proc/1/fd/1 &
+    sudo -u renderer touch /var/log/tiles/osm2pgsql.log; tail -f /var/log/tiles/osm2pgsql.log >> /proc/1/fd/1 &
+
+fi
+
+# Run while handling docker stop's SIGTERM
+stop_handler() {
+    kill -TERM "$RENDERD_PID"
+}
+trap stop_handler SIGTERM
+
+wait "$RENDERD_PID"
+
+exit 0
