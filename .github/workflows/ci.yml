@@ -101,11 +101,10 @@ jobs:
         
         echo "SUCCESS: Container correctly failed with helpful error message"
     -
-      name: Import and start server
+      name: Import and start server with auto-import
       run: |
-        echo "Starting container with auto-import (will import data then start server)..."
-        # Run in foreground for import phase to capture any errors
-        # Container will auto-detect empty database and import, then start server
+        echo "Starting container (will auto-import data and start server)..."
+        # Container auto-detects empty database, imports if needed, then starts server
         docker run --shm-size=128M \
           --link postgres:postgres \
           -e PGHOST=postgres \
@@ -116,28 +115,34 @@ jobs:
           --name osm-www \
           openstreetmap-tile-server:${{ github.sha }}
         
-        echo "Waiting for import to complete and server to start (this may take several minutes)..."
-        # Wait for container to complete import and start server
-        # Import typically takes 2-3 minutes for Luxembourg
-        for i in {1..180}; do
-          if docker ps | grep -q osm-www; then
-            # Check if renderd socket exists (indicates server started successfully)
-            if docker exec osm-www test -S /run/renderd/renderd.sock 2>/dev/null; then
-              echo "Server started successfully!"
-              docker logs osm-www
-              break
-            fi
-          else
+        echo "Waiting for import and server startup (takes ~3 minutes)..."
+        # Wait for container to complete import and fully start server (renderd + Apache)
+        # Check every 5 seconds to reduce log noise
+        for i in {1..60}; do
+          if ! docker ps | grep -q osm-www; then
             echo "ERROR: Container exited unexpectedly"
             docker logs osm-www
             exit 1
           fi
-          if [ $i -eq 180 ]; then
-            echo "ERROR: Server did not start within 3 minutes"
+          
+          # Check if both renderd socket exists AND Apache is responding
+          if docker exec osm-www test -S /run/renderd/renderd.sock 2>/dev/null; then
+            # Give Apache a moment to finish starting after renderd
+            sleep 5
+            if docker exec osm-www pgrep -x apache2 > /dev/null 2>&1; then
+              echo "Server started successfully (renderd + Apache running)!"
+              docker logs osm-www | tail -50
+              break
+            fi
+          fi
+          
+          if [ $i -eq 60 ]; then
+            echo "ERROR: Server did not start within 5 minutes"
             docker logs osm-www
             exit 1
           fi
-          sleep 1
+          
+          sleep 5
         done
     -
       name: Verify server is running
