@@ -117,18 +117,26 @@ If you're migrating from the old setup:
        --link postgres:postgres \
        -e PGHOST=postgres \
        -v osm-tiles:/data/tiles/ \
-       overv/openstreetmap-tile-server \
-       run
+       overv/openstreetmap-tile-server
    ```
+   
+   Note: The container now automatically detects if data has been imported. The legacy `run` command is still supported for backward compatibility but is no longer required.
 
 ## Docker Compose Usage
 
 The easiest way to use the new setup is with docker-compose:
 
 ```bash
-# Import data
-docker-compose run --rm -v /path/to/data.osm.pbf:/data/region.osm.pbf map import
+# Option 1: Auto-import with DOWNLOAD_PBF (recommended)
+# Set DOWNLOAD_PBF in docker-compose.yml or .env file
+docker-compose up -d
 
-# Start services
+# Option 2: Mount a PBF file for auto-import
+docker-compose run --rm -v /path/to/data.osm.pbf:/data/region.osm.pbf map
+
+# Option 3: Legacy explicit import command (still supported)
+docker-compose run --rm -v /path/to/data.osm.pbf:/data/region.osm.pbf map import
 docker-compose up -d
 ```
+
+The container will automatically detect if the database is empty and import data on first startup.
