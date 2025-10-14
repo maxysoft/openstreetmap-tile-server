@@ -7,7 +7,11 @@ This container allows you to easily set up an OpenStreetMap PNG tile server give
 
 **Note:** This tile server requires an external PostGIS database. The tile server container connects to a separate PostgreSQL/PostGIS instance (using the `postgis/postgis:18-3.6` image).
 
-## Setting up the server
+## Setting up and running the server
+
+The tile server automatically detects if the database is empty and imports OSM data before starting. This means you can set up and run the server with a single command!
+
+### Quick Start
 
 First create Docker volumes to hold the PostgreSQL database and tiles:
 
@@ -26,63 +30,68 @@ docker run -d --name postgres \
     postgis/postgis:18-3.6
 ```
 
-Next, download an `.osm.pbf` extract from geofabrik.de for the region that you're interested in. You can then start importing it into PostgreSQL by running a container and mounting the file as `/data/region.osm.pbf`. For example:
+Now start the tile server with automatic download and import:
 
 ```
-docker run --rm \
-    -v /absolute/path/to/luxembourg.osm.pbf:/data/region.osm.pbf \
+docker run -p 8080:80 \
+    -e DOWNLOAD_PBF=https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf \
+    -e DOWNLOAD_POLY=https://download.geofabrik.de/europe/luxembourg.poly \
+    -v osm-tiles:/data/tiles/ \
     --link postgres:postgres \
     -e PGHOST=postgres \
-    overv/openstreetmap-tile-server \
-    import
+    -d overv/openstreetmap-tile-server
 ```
 
-If the container exits without errors, then your data has been successfully imported and you are now ready to run the tile server.
+The container will:
+1. Check if the database contains OSM data
+2. If empty, automatically download and import the specified PBF file
+3. Start the tile server
 
-Note that the import process requires an internet connection. The run process does not require an internet connection. If you want to run the openstreetmap-tile server on a computer that is isolated, you must first import on an internet connected computer, export the `osm-data` volume as a tarfile, and then restore the data volume on the target computer system.
+On subsequent restarts, the import step is automatically skipped.
+
+### Alternative: Pre-downloaded files
+
+If you already have an `.osm.pbf` file downloaded, you can mount it instead:
+
+```
+docker run -p 8080:80 \
+    -v /absolute/path/to/luxembourg.osm.pbf:/data/region.osm.pbf \
+    -v osm-tiles:/data/tiles/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
+    -d overv/openstreetmap-tile-server
+```
+
+Note that the import process requires an internet connection for downloading external data. If you want to run the openstreetmap-tile server on a computer that is isolated, you must first import on an internet connected computer, export the `osm-data` volume as a tarfile, and then restore the data volume on the target computer system.
 
 Also when running on an isolated system, the default `index.html` from the container will not work, as it requires access to the web for the leaflet packages.
 
-### Automatic updates (optional)
+### Enabling automatic updates (optional)
 
-If your import is an extract of the planet and has polygonal bounds associated with it, like those from [geofabrik.de](https://download.geofabrik.de/), then it is possible to set your server up for automatic updates. Make sure to reference both the OSM file and the polygon file during the `import` process to facilitate this, and also include the `UPDATES=enabled` variable:
+If your import is an extract of the planet and has polygonal bounds associated with it, like those from [geofabrik.de](https://download.geofabrik.de/), then it is possible to set your server up for automatic updates. Include both the PBF and POLY files, and set the `UPDATES=enabled` variable:
 
 ```
-docker run --rm \
+docker run -p 8080:80 \
+    -e DOWNLOAD_PBF=https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf \
+    -e DOWNLOAD_POLY=https://download.geofabrik.de/europe/luxembourg.poly \
     -e UPDATES=enabled \
-    -v /absolute/path/to/luxembourg.osm.pbf:/data/region.osm.pbf \
-    -v /absolute/path/to/luxembourg.poly:/data/region.poly \
+    -v osm-tiles:/data/tiles/ \
     --link postgres:postgres \
     -e PGHOST=postgres \
-    overv/openstreetmap-tile-server \
-    import
+    -d overv/openstreetmap-tile-server
 ```
 
-Refer to the section *Automatic updating and tile expiry* to actually enable the updates while running the tile server.
+Refer to the section *Automatic updating and tile expiry* to configure the update process.
 
 Please note: If you're not importing the whole planet, then the `.poly` file is necessary to limit automatic updates to the relevant region.
 Therefore, when you only have a `.osm.pbf` file but not a `.poly` file, you should not enable automatic updates.
 
-### Letting the container download the file
-
-It is also possible to let the container download files for you rather than mounting them in advance by using the `DOWNLOAD_PBF` and `DOWNLOAD_POLY` parameters:
-
-```
-docker run --rm \
-    -e DOWNLOAD_PBF=https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf \
-    -e DOWNLOAD_POLY=https://download.geofabrik.de/europe/luxembourg.poly \
-    --link postgres:postgres \
-    -e PGHOST=postgres \
-    overv/openstreetmap-tile-server \
-    import
-```
-
 ### Using an alternate style
 
-By default the container will use openstreetmap-carto if it is not specified. However, you can modify the style at run-time. Be aware you need the style mounted at `run` AND `import` as the Lua script needs to be run:
+By default the container will use openstreetmap-carto if it is not specified. However, you can modify the style at run-time by mounting a custom style directory:
 
 ```
-docker run --rm \
+docker run -p 8080:80 \
     -e DOWNLOAD_PBF=https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf \
     -e DOWNLOAD_POLY=https://download.geofabrik.de/europe/luxembourg.poly \
     -e NAME_LUA=sample.lua \
@@ -90,81 +99,59 @@ docker run --rm \
     -e NAME_MML=project.mml \
     -e NAME_SQL=test.sql \
     -v /home/user/openstreetmap-carto-modified:/data/style/ \
+    -v osm-tiles:/data/tiles/ \
     --link postgres:postgres \
     -e PGHOST=postgres \
-    overv/openstreetmap-tile-server \
-    import
+    -d overv/openstreetmap-tile-server
 ```
 
 If you do not define the "NAME_*" variables, the script will default to those found in the openstreetmap-carto style.
 
-Be sure to mount the volume during `run` with the same `-v /home/user/openstreetmap-carto-modified:/data/style/`
-
-If you do not see the expected style upon `run` double check your paths as the style may not have been found at the directory specified. By default, `openstreetmap-carto` will be used if a style cannot be found
+If you do not see the expected style, double check your paths as the style may not have been found at the directory specified. By default, `openstreetmap-carto` will be used if a style cannot be found.
 
 **Only openstreetmap-carto and styles like it, eg, ones with one lua script, one style, one mml, one SQL can be used**
 
-## Running the server
+## How it works
 
-Run the server like this (assuming you already have the PostGIS container running from the setup step):
+The container automatically detects if the database contains OSM data on startup:
+- **If empty**: Automatically imports data (from `DOWNLOAD_PBF` or mounted `/data/region.osm.pbf`), then starts the tile server
+- **If data exists**: Skips import and starts the tile server immediately
 
-```
-docker run \
-    -p 8080:80 \
-    -v osm-tiles:/data/tiles/ \
-    --link postgres:postgres \
-    -e PGHOST=postgres \
-    -d overv/openstreetmap-tile-server \
-    run
-```
+This means you get the simplest possible workflow - just start the container and it handles everything!
 
-Your tiles will now be available at `http://localhost:8080/tile/{z}/{x}/{y}.png`. The demo map in `leaflet-demo.html` will then be available on `http://localhost:8080`. Note that it will initially take quite a bit of time to render the larger tiles for the first time.
+Your tiles will be available at `http://localhost:8080/tile/{z}/{x}/{y}.png`. The demo map in `leaflet-demo.html` will be available on `http://localhost:8080`. Note that it will initially take quite a bit of time to render the larger tiles for the first time.
 
-### Automatic import on first run
-
-If you want a simpler setup process, you can skip the separate `import` step and let the container automatically download and import data on first run. Simply set the `DOWNLOAD_PBF` (and optionally `DOWNLOAD_POLY`) environment variables when running the `run` command:
-
-```
-docker run \
-    -p 8080:80 \
-    -v osm-tiles:/data/tiles/ \
-    --link postgres:postgres \
-    -e PGHOST=postgres \
-    -e DOWNLOAD_PBF=https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf \
-    -e DOWNLOAD_POLY=https://download.geofabrik.de/europe/luxembourg.poly \
-    -d overv/openstreetmap-tile-server \
-    run
-```
-
-When the container starts with the `run` command, it will automatically detect that the database hasn't been imported yet and perform the import before starting the tile server. This is a one-time process - subsequent restarts will skip the import and start the tile server directly.
-
-**Note:** The automatic import process may take a significant amount of time depending on the size of the data being imported. Monitor the container logs to track progress.
+**Note:** The first-run import process may take a significant amount of time depending on the size of the data being imported. Monitor the container logs to track progress.
 
 ### Using Docker Compose
 
-The `docker-compose.yml` file included with this repository shows how the aforementioned commands can be used with Docker Compose to run your server with a separate PostGIS database. To use it:
-
-**Option 1: Automatic import on first run (recommended for initial setup)**
-
-Set the `DOWNLOAD_PBF` environment variable in your `docker-compose.yml` for the tile-server service, then simply start the services:
+The `docker-compose.yml` file included with this repository shows how to run your server with a separate PostGIS database. Simply set the `DOWNLOAD_PBF` environment variable in your `docker-compose.yml` for the tile-server service, then start the services:
 
 ```
 docker-compose up -d
 ```
 
-The tile server will automatically download and import the data on first run before starting.
+The tile server will automatically download and import the data on first run, then start serving tiles. Subsequent restarts will skip the import step.
 
-**Option 2: Two-step process with manual import**
+If you prefer to use a pre-downloaded PBF file, you can mount it instead of setting `DOWNLOAD_PBF`:
 
-1. First, import your data:
 ```
-docker-compose run --rm -v /absolute/path/to/luxembourg.osm.pbf:/data/region.osm.pbf map import
+docker-compose run --rm -v /absolute/path/to/luxembourg.osm.pbf:/data/region.osm.pbf tile-server
 ```
 
-2. Then start the services:
+### Legacy command support (backward compatibility)
+
+For backward compatibility, the container still supports the legacy `import` and `run` commands:
+
+```bash
+# Legacy import-only command (imports data then exits)
+docker run --rm ... overv/openstreetmap-tile-server import
+
+# Legacy run command (same as no command - auto-imports if needed, then runs)
+docker run ... overv/openstreetmap-tile-server run
 ```
-docker-compose up -d
-```
+
+However, these are optional. The recommended approach is to simply start the container without specifying a command, and it will automatically handle everything.
 
 ### Preserving rendered tiles
 
