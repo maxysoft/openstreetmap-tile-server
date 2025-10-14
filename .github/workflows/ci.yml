@@ -101,9 +101,11 @@ jobs:
         
         echo "SUCCESS: Container correctly failed with helpful error message"
     -
-      name: Start server with auto-import
+      name: Import and start server
       run: |
-        echo "Starting server with auto-import enabled (database will be imported automatically)..."
+        echo "Starting container with auto-import (will import data then start server)..."
+        # Run in foreground for import phase to capture any errors
+        # Container will auto-detect empty database and import, then start server
         docker run --shm-size=128M \
           --link postgres:postgres \
           -e PGHOST=postgres \
@@ -114,9 +116,29 @@ jobs:
           --name osm-www \
           openstreetmap-tile-server:${{ github.sha }}
         
-        echo "Waiting for import and server startup (this may take a few minutes)..."
-        sleep 120
-        docker logs osm-www
+        echo "Waiting for import to complete and server to start (this may take several minutes)..."
+        # Wait for container to complete import and start server
+        # Import typically takes 2-3 minutes for Luxembourg
+        for i in {1..180}; do
+          if docker ps | grep -q osm-www; then
+            # Check if renderd socket exists (indicates server started successfully)
+            if docker exec osm-www test -S /run/renderd/renderd.sock 2>/dev/null; then
+              echo "Server started successfully!"
+              docker logs osm-www
+              break
+            fi
+          else
+            echo "ERROR: Container exited unexpectedly"
+            docker logs osm-www
+            exit 1
+          fi
+          if [ $i -eq 180 ]; then
+            echo "ERROR: Server did not start within 3 minutes"
+            docker logs osm-www
+            exit 1
+          fi
+          sleep 1
+        done
     -
       name: Verify server is running
       run: |
