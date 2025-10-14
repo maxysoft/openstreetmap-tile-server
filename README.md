@@ -120,9 +120,41 @@ docker run \
 
 Your tiles will now be available at `http://localhost:8080/tile/{z}/{x}/{y}.png`. The demo map in `leaflet-demo.html` will then be available on `http://localhost:8080`. Note that it will initially take quite a bit of time to render the larger tiles for the first time.
 
+### Automatic import on first run
+
+If you want a simpler setup process, you can skip the separate `import` step and let the container automatically download and import data on first run. Simply set the `DOWNLOAD_PBF` (and optionally `DOWNLOAD_POLY`) environment variables when running the `run` command:
+
+```
+docker run \
+    -p 8080:80 \
+    -v osm-tiles:/data/tiles/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
+    -e DOWNLOAD_PBF=https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf \
+    -e DOWNLOAD_POLY=https://download.geofabrik.de/europe/luxembourg.poly \
+    -d overv/openstreetmap-tile-server \
+    run
+```
+
+When the container starts with the `run` command, it will automatically detect that the database hasn't been imported yet and perform the import before starting the tile server. This is a one-time process - subsequent restarts will skip the import and start the tile server directly.
+
+**Note:** The automatic import process may take a significant amount of time depending on the size of the data being imported. Monitor the container logs to track progress.
+
 ### Using Docker Compose
 
 The `docker-compose.yml` file included with this repository shows how the aforementioned commands can be used with Docker Compose to run your server with a separate PostGIS database. To use it:
+
+**Option 1: Automatic import on first run (recommended for initial setup)**
+
+Set the `DOWNLOAD_PBF` environment variable in your `docker-compose.yml` for the tile-server service, then simply start the services:
+
+```
+docker-compose up -d
+```
+
+The tile server will automatically download and import the data on first run before starting.
+
+**Option 2: Two-step process with manual import**
 
 1. First, import your data:
 ```
