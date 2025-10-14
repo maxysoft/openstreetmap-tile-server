@@ -71,13 +71,12 @@ jobs:
     -
       name: Test run without import (should fail with clear error)
       run: |
-        echo "Testing that run mode fails gracefully when database not imported..."
+        echo "Testing that container fails gracefully when database is empty and no import data is available..."
         set +e  # Temporarily disable exit on error
         docker run --rm --shm-size=128M \
           --link postgres:postgres \
           -e PGHOST=postgres \
-          openstreetmap-tile-server:${{ github.sha }} \
-          run > /tmp/run-without-import.log 2>&1
+          openstreetmap-tile-server:${{ github.sha }} > /tmp/run-without-import.log 2>&1
         EXIT_CODE=$?
         set -e  # Re-enable exit on error
         
@@ -89,41 +88,34 @@ jobs:
           exit 1
         fi
         
-        # Verify the error message contains expected text
-        if ! grep -q "ERROR: Database has not been imported yet" /tmp/run-without-import.log; then
+        # Verify the error message contains expected text for new auto-import behavior
+        if ! grep -q "ERROR: Database is empty and no import data is available!" /tmp/run-without-import.log; then
           echo "ERROR: Expected error message not found"
           exit 1
         fi
         
-        if ! grep -q "You need to run the 'import' command first" /tmp/run-without-import.log; then
+        if ! grep -q "Please provide OSM data in one of the following ways:" /tmp/run-without-import.log; then
           echo "ERROR: Expected guidance message not found"
           exit 1
         fi
         
-        echo "SUCCESS: Run mode correctly failed with helpful error message"
+        echo "SUCCESS: Container correctly failed with helpful error message"
     -
-      name: Import Luxembourg
+      name: Start server with auto-import
       run: |
-        docker run --rm --shm-size=128M \
+        echo "Starting server with auto-import enabled (database will be imported automatically)..."
+        docker run --shm-size=128M \
           --link postgres:postgres \
           -e PGHOST=postgres \
           -e UPDATES=enabled \
           -e DOWNLOAD_PBF=https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf \
           -e DOWNLOAD_POLY=https://download.geofabrik.de/europe/luxembourg.poly \
-          openstreetmap-tile-server:${{ github.sha }} \
-          import
-    -
-      name: Start server
-      run: |
-        docker run --shm-size=128M \
-          --link postgres:postgres \
-          -e PGHOST=postgres \
-          -e UPDATES=enabled \
           -p 80:80 -d \
           --name osm-www \
-          openstreetmap-tile-server:${{ github.sha }} \
-          run
-        sleep 30
+          openstreetmap-tile-server:${{ github.sha }}
+        
+        echo "Waiting for import and server startup (this may take a few minutes)..."
+        sleep 120
         docker logs osm-www
     -
       name: Verify server is running
