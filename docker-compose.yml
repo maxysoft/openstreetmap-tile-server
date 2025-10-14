@@ -43,7 +43,7 @@ services:
     hostname: tile-server
     restart: unless-stopped
     shm_size: 256MB
-    command: "run"
+    # command: "run"  # Optional: Legacy command, container auto-detects and imports if needed
     environment:
       PGHOST: tile-server-db
       PGPORT: 5432

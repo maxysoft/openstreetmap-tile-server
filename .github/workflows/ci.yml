@@ -71,13 +71,12 @@ jobs:
     -
       name: Test run without import (should fail with clear error)
       run: |
-        echo "Testing that run mode fails gracefully when database not imported..."
+        echo "Testing that container fails gracefully when database is empty and no import data is available..."
         set +e  # Temporarily disable exit on error
         docker run --rm --shm-size=128M \
           --link postgres:postgres \
           -e PGHOST=postgres \
-          openstreetmap-tile-server:${{ github.sha }} \
-          run > /tmp/run-without-import.log 2>&1
+          openstreetmap-tile-server:${{ github.sha }} > /tmp/run-without-import.log 2>&1
         EXIT_CODE=$?
         set -e  # Re-enable exit on error
         
@@ -89,42 +88,62 @@ jobs:
           exit 1
         fi
         
-        # Verify the error message contains expected text
-        if ! grep -q "ERROR: Database has not been imported yet" /tmp/run-without-import.log; then
+        # Verify the error message contains expected text for new auto-import behavior
+        if ! grep -q "ERROR: Database is empty and no import data is available!" /tmp/run-without-import.log; then
           echo "ERROR: Expected error message not found"
           exit 1
         fi
         
-        if ! grep -q "You need to run the 'import' command first" /tmp/run-without-import.log; then
+        if ! grep -q "Please provide OSM data in one of the following ways:" /tmp/run-without-import.log; then
           echo "ERROR: Expected guidance message not found"
           exit 1
         fi
         
-        echo "SUCCESS: Run mode correctly failed with helpful error message"
+        echo "SUCCESS: Container correctly failed with helpful error message"
     -
-      name: Import Luxembourg
+      name: Import and start server with auto-import
       run: |
-        docker run --rm --shm-size=128M \
+        echo "Starting container (will auto-import data and start server)..."
+        # Container auto-detects empty database, imports if needed, then starts server
+        docker run --shm-size=128M \
           --link postgres:postgres \
           -e PGHOST=postgres \
           -e UPDATES=enabled \
           -e DOWNLOAD_PBF=https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf \
           -e DOWNLOAD_POLY=https://download.geofabrik.de/europe/luxembourg.poly \
-          openstreetmap-tile-server:${{ github.sha }} \
-          import
-    -
-      name: Start server
-      run: |
-        docker run --shm-size=128M \
-          --link postgres:postgres \
-          -e PGHOST=postgres \
-          -e UPDATES=enabled \
           -p 80:80 -d \
           --name osm-www \
-          openstreetmap-tile-server:${{ github.sha }} \
-          run
-        sleep 30
-        docker logs osm-www
+          openstreetmap-tile-server:${{ github.sha }}
+        
+        echo "Waiting for import and server startup (takes ~3 minutes)..."
+        # Wait for container to complete import and fully start server (renderd + Apache)
+        # Check every 5 seconds to reduce log noise
+        for i in {1..60}; do
+          if ! docker ps | grep -q osm-www; then
+            echo "ERROR: Container exited unexpectedly"
+            docker logs osm-www
+            exit 1
+          fi
+          
+          # Check if both renderd socket exists AND Apache is responding
+          if docker exec osm-www test -S /run/renderd/renderd.sock 2>/dev/null; then
+            # Give Apache a moment to finish starting after renderd
+            sleep 5
+            if docker exec osm-www pgrep -x apache2 > /dev/null 2>&1; then
+              echo "Server started successfully (renderd + Apache running)!"
+              docker logs osm-www | tail -50
+              break
+            fi
+          fi
+          
+          if [ $i -eq 60 ]; then
+            echo "ERROR: Server did not start within 5 minutes"
+            docker logs osm-www
+            exit 1
+          fi
+          
+          sleep 5
+        done
     -
       name: Verify server is running
       run: |
