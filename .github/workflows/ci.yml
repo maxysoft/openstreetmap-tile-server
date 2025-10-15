@@ -230,11 +230,14 @@ jobs:
         BASE_NAME=$(echo $BASE_IMAGE | cut -d: -f1)
         BASE_FULL_VERSION=$(echo $BASE_IMAGE | cut -d: -f2)
         # For debian:trixie-* format, extract just "trixie", for ubuntu:22.04 format, extract major version
-        if [[ $BASE_FULL_VERSION == trixie* ]]; then
-          BASE_VERSION="trixie"
-        else
-          BASE_VERSION=$(echo $BASE_FULL_VERSION | cut -d. -f1 | cut -d- -f1)
-        fi
+        case "$BASE_FULL_VERSION" in
+          trixie*)
+            BASE_VERSION="trixie"
+            ;;
+          *)
+            BASE_VERSION=$(echo $BASE_FULL_VERSION | cut -d. -f1 | cut -d- -f1)
+            ;;
+        esac
         BASE_TAG="${BASE_NAME}-${BASE_VERSION}"
         echo "base_tag=${BASE_TAG}" >> $GITHUB_OUTPUT
         
