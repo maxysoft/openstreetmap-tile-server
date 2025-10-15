@@ -5,6 +5,10 @@
 
 This container allows you to easily set up an OpenStreetMap PNG tile server given a `.osm.pbf` file. It is based on the [latest Ubuntu 18.04 LTS guide](https://switch2osm.org/serving-tiles/manually-building-a-tile-server-18-04-lts/) from [switch2osm.org](https://switch2osm.org/) and therefore uses the default OpenStreetMap style.
 
+**Base Image:** Debian Trixie (Stable) - `debian:trixie-20250929-slim`  
+**Node.js Version:** 22.x LTS (Jod) with npm 10.9.3  
+**Carto Version:** 1.2.0 (latest)
+
 **Note:** This tile server requires an external PostGIS database. The tile server container connects to a separate PostgreSQL/PostGIS instance (using the `postgis/postgis:18-3.6` image).
 
 ## Setting up and running the server
@@ -327,6 +331,27 @@ For too high values you may notice excessive CPU load and memory usage. It might
 ### The import process unexpectedly exits
 
 You may be running into problems with memory usage during the import. Have a look at the "Flat nodes" section in this README.
+
+## Recent Updates
+
+### Base Image Migration (October 2025)
+
+The tile server has been migrated from Ubuntu 22.04 to Debian Trixie (Stable) for improved performance and smaller image size:
+
+- **Base Image**: `debian:trixie-20250929-slim` (was `ubuntu:22.04`)
+- **Node.js**: Upgraded to 22.20.0 LTS (Jod) with npm 10.9.3 (was using system npm)
+- **Package Changes**:
+  - Replaced `unrar` with `unrar-free` (Debian native package)
+  - Replaced `pip install osmium` with `python3-pyosmium` (Debian native package)
+  - Node.js now installed from NodeSource repository for latest LTS version
+- **Performance**: Reduced Docker layers and improved build caching
+- **Benefits**: 
+  - Smaller base image size
+  - Better security with Debian's stable packages
+  - Modern Node.js LTS for better npm package support
+  - All packages upgraded to latest compatible versions
+
+For migration details, see [TRIXIE_MIGRATION_PLAN.md](TRIXIE_MIGRATION_PLAN.md).
 
 ## License
 

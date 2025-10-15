@@ -52,11 +52,9 @@ ENV MAX_INTERVAL_SECONDS=3600
 
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Install Node.js 22.x LTS from NodeSource
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-
-# Get packages
-RUN apt-get update \
+# Install Node.js 22.x LTS from NodeSource and get packages in a single layer
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+&& apt-get update \
 && apt-get install -y --no-install-recommends \
  apache2 \
  cron \
