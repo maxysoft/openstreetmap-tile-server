@@ -126,7 +126,9 @@ function performImport() {
 
     # flat-nodes
     if [ "${FLAT_NODES:-}" == "enabled" ] || [ "${FLAT_NODES:-}" == "1" ]; then
-        OSM2PGSQL_EXTRA_ARGS="${OSM2PGSQL_EXTRA_ARGS:-} --flat-nodes /data/database/flat_nodes.bin"
+        mkdir -p /data/osm-flatnodes/
+        chown renderer: /data/osm-flatnodes/
+        OSM2PGSQL_EXTRA_ARGS="${OSM2PGSQL_EXTRA_ARGS:-} --flat-nodes /data/osm-flatnodes/flat_nodes.bin"
     fi
 
     # Import data
@@ -138,10 +140,17 @@ function performImport() {
       ${OSM2PGSQL_EXTRA_ARGS:-}  \
     ;
 
-    # old flat-nodes dir
-    if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/database/flat_nodes.bin ]; then
-        mv /nodes/flat_nodes.bin /data/database/flat_nodes.bin
-        chown renderer: /data/database/flat_nodes.bin
+    # old flat-nodes dir - migrate to new location
+    if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/osm-flatnodes/flat_nodes.bin ]; then
+        mkdir -p /data/osm-flatnodes/
+        mv /nodes/flat_nodes.bin /data/osm-flatnodes/flat_nodes.bin
+        chown renderer: /data/osm-flatnodes/flat_nodes.bin
+    fi
+    # Migrate from old /data/database location to new /data/osm-flatnodes location
+    if [ -f /data/database/flat_nodes.bin ] && ! [ -f /data/osm-flatnodes/flat_nodes.bin ]; then
+        mkdir -p /data/osm-flatnodes/
+        mv /data/database/flat_nodes.bin /data/osm-flatnodes/flat_nodes.bin
+        chown renderer: /data/osm-flatnodes/flat_nodes.bin
     fi
 
     # Create database functions (required for openstreetmap-carto)
@@ -186,8 +195,14 @@ fi
 rm -rf /tmp/*
 
 # migrate old files
-if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/database/flat_nodes.bin ]; then
-    mv /nodes/flat_nodes.bin /data/database/flat_nodes.bin
+if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/osm-flatnodes/flat_nodes.bin ]; then
+    mkdir -p /data/osm-flatnodes/
+    mv /nodes/flat_nodes.bin /data/osm-flatnodes/flat_nodes.bin
+fi
+# Migrate from old /data/database location to new /data/osm-flatnodes location
+if [ -f /data/database/flat_nodes.bin ] && ! [ -f /data/osm-flatnodes/flat_nodes.bin ]; then
+    mkdir -p /data/osm-flatnodes/
+    mv /data/database/flat_nodes.bin /data/osm-flatnodes/flat_nodes.bin
 fi
 if [ -f /data/tiles/data.poly ] && ! [ -f /data/database/region.poly ]; then
     mv /data/tiles/data.poly /data/database/region.poly

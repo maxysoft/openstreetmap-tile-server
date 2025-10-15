@@ -56,7 +56,7 @@ services:
       PRERENDER_ZOOMS: 0-12   # Pre-render zoom levels (e.g., "0-12" or "disabled")
     volumes:
       - osm-tiles:/data/tiles/
-      - osm-flatnodes:/data/database/  # Required when FLAT_NODES=enabled
+      - osm-flatnodes:/data/osm-flatnodes/  # Required when FLAT_NODES=enabled
     ports:
       - "8080:80"
     depends_on:

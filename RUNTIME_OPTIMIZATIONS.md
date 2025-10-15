@@ -49,12 +49,12 @@ The flat nodes file stores node coordinates on disk instead of in RAM. Approxima
 | Planet | ~70 GB |
 
 **Storage Configuration**:
-- **Dedicated Volume Recommended**: Mount a separate volume for `/data/database/` to isolate flat nodes storage
+- **Dedicated Volume Recommended**: Mount a separate volume for `/data/osm-flatnodes/` to isolate flat nodes storage
 - **Fast Storage**: Use SSD/NVMe for best performance
 - **Example docker-compose.yml**:
 ```yaml
 volumes:
-  - osm-flatnodes:/data/database/  # Dedicated volume for flat nodes and database metadata
+  - osm-flatnodes:/data/osm-flatnodes/  # Dedicated volume for flat nodes storage
 ```
 
 **When to Use**:
