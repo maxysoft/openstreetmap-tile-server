@@ -161,7 +161,29 @@ jobs:
           exit 1
         }
         
-        echo "SUCCESS: Server is running and renderd socket exists"
+        # Verify Apache is running
+        docker exec osm-www pgrep -x apache2 > /dev/null || {
+          echo "ERROR: Apache is not running"
+          docker logs osm-www
+          exit 1
+        }
+        
+        echo "SUCCESS: Server is running with renderd and Apache"
+        
+        # Wait for Apache to be ready to accept connections
+        echo "Waiting for Apache to accept connections..."
+        for i in {1..30}; do
+          if curl -f http://localhost/ > /dev/null 2>&1; then
+            echo "Apache is responding!"
+            break
+          fi
+          if [ $i -eq 30 ]; then
+            echo "ERROR: Apache not responding after 30 seconds"
+            docker logs osm-www | tail -100
+            exit 1
+          fi
+          sleep 1
+        done
     -
       name: Download tiles
       run: |
