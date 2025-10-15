@@ -7,7 +7,7 @@ RUN apt-get update \
 && apt-get install -y --no-install-recommends \
  ca-certificates gnupg lsb-release locales \
  wget curl \
- git-core unzip unrar \
+ git-core unzip unrar-free \
 && locale-gen $LANG && update-locale LANG=$LANG \
 && sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
 && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg \
@@ -82,6 +82,7 @@ RUN apt-get update \
  python3-psycopg2 \
  python3-shapely \
  python3-pip \
+ python3-pyosmium \
  python3-yaml \
  python3-requests \
  renderd \
@@ -97,9 +98,8 @@ RUN adduser --disabled-password --gecos "" renderer
 RUN wget https://github.com/googlefonts/noto-emoji/blob/9a5261d871451f9b5183c93483cbd68ed916b1e9/fonts/NotoEmoji-Regular.ttf?raw=true --content-disposition -P /usr/share/fonts/ \
 && wget https://github.com/stamen/terrain-classic/blob/master/fonts/unifont-Medium.ttf?raw=true --content-disposition -P /usr/share/fonts/
 
-# Install Python and Node.js packages with cache cleanup
-RUN pip3 install --no-cache-dir osmium \
-&& npm install -g carto@1.2.0 \
+# Install Node.js packages with cache cleanup
+RUN npm install -g carto@1.2.0 \
 && npm cache clean --force \
 && rm -rf /root/.npm /tmp/*
 
