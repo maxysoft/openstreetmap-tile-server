@@ -267,6 +267,40 @@ fi
 echo "Starting Apache..."
 service apache2 restart
 
+# Pre-render tiles if requested
+if [ -n "${PRERENDER_ZOOMS:-}" ] && [ "${PRERENDER_ZOOMS:-}" != "disabled" ]; then
+    # Check if we need to pre-render (only do this once)
+    if [ ! -f /data/database/prerender-complete ]; then
+        echo "========================================"
+        echo "Pre-rendering tiles for zoom levels: ${PRERENDER_ZOOMS}"
+        echo "This is a one-time operation and may take 1-2 hours for zoom 0-12"
+        echo "========================================"
+        
+        # Parse zoom range (e.g., "0-12" -> min=0, max=12)
+        ZOOM_MIN=$(echo "${PRERENDER_ZOOMS}" | cut -d'-' -f1)
+        ZOOM_MAX=$(echo "${PRERENDER_ZOOMS}" | cut -d'-' -f2)
+        
+        # Run render_list in background to avoid blocking startup
+        sudo -u renderer render_list -a -z ${ZOOM_MIN} -Z ${ZOOM_MAX} -n ${THREADS:-4} &
+        PRERENDER_PID=$!
+        
+        # Wait for pre-rendering to complete (run in background)
+        (
+            wait $PRERENDER_PID
+            touch /data/database/prerender-complete
+            echo "========================================"
+            echo "Pre-rendering completed for zoom ${ZOOM_MIN}-${ZOOM_MAX}"
+            echo "========================================"
+        ) &
+        
+        echo "Pre-rendering started in background (PID: $PRERENDER_PID)"
+        echo "Server will continue starting while pre-rendering runs in background"
+    else
+        echo "Pre-rendering already completed (found /data/database/prerender-complete)"
+        echo "To re-run pre-rendering, delete /data/database/prerender-complete"
+    fi
+fi
+
 # start cron job to trigger consecutive updates
 if [ "${UPDATES:-}" == "enabled" ] || [ "${UPDATES:-}" == "1" ]; then
     /etc/init.d/cron start

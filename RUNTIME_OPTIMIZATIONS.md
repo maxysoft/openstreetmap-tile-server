@@ -36,6 +36,33 @@ docker run ... -e FLAT_NODES=enabled ...
 
 **Impact**: Reduces memory usage from ~8GB to ~1GB for planet imports, significantly faster for large datasets.
 
+**Disk Space Requirements**:
+The flat nodes file stores node coordinates on disk instead of in RAM. Approximate sizes:
+
+| Region | Flat Nodes File Size |
+|--------|---------------------|
+| Luxembourg | ~100 MB |
+| Switzerland | ~500 MB |
+| Germany | ~3 GB |
+| France | ~4 GB |
+| Europe | ~35 GB |
+| Planet | ~70 GB |
+
+**Storage Configuration**:
+- **Dedicated Volume Recommended**: Mount a separate volume for `/data/database/` to isolate flat nodes storage
+- **Fast Storage**: Use SSD/NVMe for best performance
+- **Example docker-compose.yml**:
+```yaml
+volumes:
+  - osm-flatnodes:/data/database/  # Dedicated volume for flat nodes and database metadata
+```
+
+**When to Use**:
+- ✅ **USE** for imports >1GB PBF (countries and larger)
+- ✅ **USE** when RAM is limited (<16GB)
+- ❌ **SKIP** for small regions (<500MB PBF) - overhead not worth it
+- ❌ **SKIP** if you have >32GB RAM and import small regions
+
 #### 3. Optimize PostgreSQL for Import
 Add these PostgreSQL tuning parameters for import phase:
 
@@ -401,6 +428,228 @@ docker exec varnish-cache varnishstat -1
 - `cache_miss` - Cache misses
 - `n_object` - Objects in cache
 - `g_bytes` - Memory used
+
+---
+
+## Nginx/Angie as Apache Alternative
+
+### Can You Replace Apache with Nginx or Angie?
+
+**Short Answer**: Yes, but with caveats. When using Varnish for caching, you can replace Apache with nginx or angie as the backend web server.
+
+### Why Replace Apache?
+
+**Advantages of nginx/angie**:
+- ✅ **Lower memory footprint**: ~10-50MB vs Apache's ~100-200MB per process
+- ✅ **Better concurrent connection handling**: Event-driven vs process-based
+- ✅ **Simpler configuration**: Easier to understand and maintain
+- ✅ **Better static file performance**: 2-3x faster for serving tiles from cache
+- ✅ **Angie**: Fork of nginx with additional features (HTTP/3, dynamic upstreams)
+
+**Disadvantages**:
+- ❌ **No native mod_tile support**: Must use Varnish or another cache layer
+- ❌ **Manual tile cache management**: No built-in expired tile handling
+- ⚠️ **Requires Varnish**: Nginx/angie should not directly serve uncached tiles
+
+### Architecture Options
+
+#### Option 1: Varnish + Nginx + mod_tile (Recommended)
+
+```
+Clients → Varnish (RAM cache) → nginx (proxy) → Apache + mod_tile → renderd
+```
+
+**Best for**: High traffic with mixed workloads
+
+**Configuration**:
+```yaml
+# docker-compose.yml
+services:
+  # Apache + mod_tile (backend, not exposed)
+  tile-server:
+    image: overv/openstreetmap-tile-server
+    expose:
+      - "80"
+    # ... rest of config ...
+
+  # nginx as reverse proxy (optional middle layer)
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - osm-tiles:/var/cache/tiles:ro  # Read-only tile cache
+    depends_on:
+      - tile-server
+    networks:
+      - tile-server-net
+
+  # Varnish (frontend)
+  varnish:
+    image: varnish:7.6
+    ports:
+      - "8080:80"
+    environment:
+      VARNISH_SIZE: 8G
+    volumes:
+      - ./varnish-nginx.vcl:/etc/varnish/default.vcl:ro
+    depends_on:
+      - nginx
+    networks:
+      - tile-server-net
+```
+
+**nginx.conf**:
+```nginx
+events {
+    worker_connections 4096;
+}
+
+http {
+    upstream tile_backend {
+        server tile-server:80;
+        keepalive 32;
+    }
+
+    server {
+        listen 80;
+        
+        # Serve tiles from cache if available
+        location /tile/ {
+            root /var/cache/tiles;
+            try_files $uri @backend;
+            
+            # Cache control headers
+            add_header X-Cache-Status "HIT";
+            expires 7d;
+        }
+        
+        # Fallback to Apache mod_tile for missing tiles
+        location @backend {
+            proxy_pass http://tile_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            
+            # Timeouts for slow renders
+            proxy_connect_timeout 10s;
+            proxy_read_timeout 120s;
+            
+            add_header X-Cache-Status "MISS";
+        }
+        
+        # Serve static content
+        location / {
+            proxy_pass http://tile_backend;
+        }
+    }
+}
+```
+
+#### Option 2: Varnish + Angie + mod_tile
+
+```
+Clients → Varnish (RAM cache) → angie (proxy) → Apache + mod_tile → renderd
+```
+
+**Angie advantages over nginx**:
+- HTTP/3 support (QUIC)
+- Dynamic upstream configuration
+- Better monitoring/stats
+- Enhanced security features
+
+**angie.conf** (similar to nginx):
+```nginx
+# Same as nginx.conf, but with additional features
+http {
+    upstream tile_backend {
+        server tile-server:80;
+        keepalive 32;
+        
+        # Angie-specific: dynamic reconfiguration
+        zone tile_backend 64k;
+    }
+    
+    # ... rest similar to nginx ...
+}
+```
+
+#### Option 3: Varnish + renderd Direct (Advanced)
+
+```
+Clients → Varnish → renderd HTTP interface (port 7653)
+```
+
+**Most efficient but requires custom setup**:
+- Remove Apache entirely
+- Configure renderd to listen on HTTP port
+- Varnish connects directly to renderd
+- **Not recommended** unless you have specific needs
+
+### When to Use Each Option
+
+**Use Apache (default)**:
+- ✅ Small to medium deployments (<100 req/s)
+- ✅ Don't want to manage Varnish
+- ✅ Need mod_tile features (automatic expiry, meta-tiles)
+- ✅ Simple setup preferred
+
+**Use Varnish + Apache**:
+- ✅ Medium to high traffic (>100 req/s)
+- ✅ Want RAM caching without changing backend
+- ✅ Best balance of performance and simplicity
+
+**Use Varnish + nginx + Apache**:
+- ✅ Very high traffic (>1000 req/s)
+- ✅ Want to minimize Apache load
+- ✅ Need nginx for other services too
+- ✅ Have expertise with nginx
+
+**Use Varnish + angie + Apache**:
+- ✅ Same as nginx, plus:
+- ✅ Need HTTP/3 support
+- ✅ Want better monitoring
+- ✅ Enterprise requirements
+
+### Migration Path
+
+**From Apache-only to nginx/angie**:
+
+1. **Phase 1**: Add Varnish in front of Apache
+   - Validate performance improvement
+   - No backend changes needed
+
+2. **Phase 2**: Add nginx/angie between Varnish and Apache
+   - nginx serves cached tiles directly
+   - Apache only handles cache misses
+   - Reduces Apache load by 70-90%
+
+3. **Phase 3** (Optional): Optimize further
+   - Tune nginx worker processes
+   - Implement nginx tile caching to disk
+   - Consider removing Apache if renderd can be exposed
+
+### Performance Comparison
+
+| Configuration | Req/s | Memory | Complexity |
+|--------------|-------|--------|-----------|
+| Apache only | 50-100 | 200 MB | Low |
+| Varnish + Apache | 500-2000 | 8 GB | Medium |
+| Varnish + nginx + Apache | 2000-5000 | 8.1 GB | High |
+| Varnish + angie + Apache | 2000-5000 | 8.1 GB | High |
+
+### Recommendation
+
+**For most users**: Stick with **Varnish + Apache** (Option in Varnish Integration section)
+- Simplest setup with best performance gains
+- No need for additional nginx/angie layer
+- Apache + mod_tile handles tile generation well
+
+**For high-scale users**: Consider **Varnish + nginx + Apache**
+- When serving >1000 req/s
+- When every millisecond counts
+- When you have DevOps expertise
+
+**Bottom line**: Adding nginx/angie provides only marginal benefits (~10-20%) over Varnish + Apache alone, with added complexity. Focus on Varnish first.
 
 ---
 
