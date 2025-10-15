@@ -30,7 +30,7 @@ services:
     volumes:
       - osm-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U renderer -d gis"]
+      test: ["CMD-SHELL", "pg_isready -U osm_usr -d osm_tiles"]
       interval: 10s
       timeout: 5s
       retries: 5

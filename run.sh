@@ -159,7 +159,7 @@ function performImport() {
     #Import external data
     chown -R renderer: /home/renderer/src/ /data/style/
     if [ -f /data/style/scripts/get-external-data.py ] && [ -f /data/style/external-data.yml ]; then
-        sudo -E -u renderer python3 /data/style/scripts/get-external-data.py -c /data/style/external-data.yml -D /data/style/data
+        sudo -E -u renderer python3 /data/style/scripts/get-external-data.py -c /data/style/external-data.yml -D /data/style/data -d ${PGDATABASE:-gis} -H ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer}
     fi
 
     # Register that data has changed for mod_tile caching purposes
