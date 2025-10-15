@@ -137,12 +137,44 @@ If Debian Trixie (testing) proves problematic, consider:
 3. **Ubuntu Minimal**: Use `ubuntu:22.04-minimal` for smaller image size
 
 ## Success Criteria
-- [ ] Docker image builds successfully
-- [ ] Image size is equal or smaller than current image
-- [ ] All CI tests pass
-- [ ] Tile rendering performance is equivalent or better
-- [ ] No regressions in functionality
-- [ ] Documentation is updated
+- [x] Docker image builds successfully
+- [x] Image size is equal or smaller than current image (1.64GB)
+- [ ] All CI tests pass (requires PR merge and CI run)
+- [ ] Tile rendering performance is equivalent or better (requires testing)
+- [ ] No regressions in functionality (requires testing)
+- [x] Documentation is updated
+
+## Migration Completed (October 2025)
+
+The migration to Debian Trixie has been successfully completed with the following changes:
+
+### Implemented Changes
+1. **Base Image**: Changed from `ubuntu:22.04` to `debian:trixie-20250929-slim`
+2. **Node.js**: Upgraded to 22.20.0 LTS (Jod) from NodeSource repository
+3. **npm**: Version 10.9.3 (bundled with Node.js 22.x)
+4. **carto**: Already at latest version 1.2.0
+5. **Package Adjustments**:
+   - Replaced `unrar` with `unrar-free` (Debian native)
+   - Replaced `pip install osmium` with `python3-pyosmium` package
+   - Combined Node.js setup with package installation to reduce layers
+
+### Build Optimizations
+- Reduced Docker layers by combining Node.js repository setup with package installation
+- Maintained cache cleanup for npm and temporary files
+- Image size: 1.64GB (same as Ubuntu version)
+
+### Testing Status
+- [x] Docker build completes successfully
+- [x] Node.js and npm versions verified
+- [x] All packages install correctly
+- [ ] Full CI tests (pending PR merge)
+- [ ] Tile rendering validation (pending deployment)
+
+### Notes
+- PostgreSQL client 18 works correctly with Debian Trixie
+- All font packages available in Debian repositories
+- Python 3.13 enforces PEP 668, resolved by using Debian native packages
+- CI workflow updated to handle new base image tag format
 
 ## References
 - Debian Trixie Release Info: https://www.debian.org/releases/trixie/

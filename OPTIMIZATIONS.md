@@ -4,17 +4,28 @@ This document describes the production optimizations applied to the OpenStreetMa
 
 ## Docker Image Optimizations
 
-### 1. Multi-stage Build Cleanup
-- **pip cache cleanup**: Added `--no-cache-dir` flag to `pip3 install` to prevent caching unnecessary files
+### 1. Base Image Upgrade (October 2025)
+- **Base Image**: Migrated from Ubuntu 22.04 to Debian Trixie (trixie-20250929-slim)
+- **Node.js**: Upgraded to 22.20.0 LTS (Jod) from NodeSource repository
+- **npm**: Version 10.9.3 (bundled with Node.js 22.x)
+- **Python**: Uses Debian 3.13 with native packages (python3-pyosmium)
+- **Benefits**: 
+  - Smaller base image size (Debian slim)
+  - Better security with Debian stable packages
+  - Latest LTS Node.js with better performance and security
+  - Native package management reduces build complexity
+
+### 2. Multi-stage Build Cleanup
 - **npm cache cleanup**: Added `npm cache clean --force` after installing carto
 - **Temporary files cleanup**: Added cleanup of `/root/.npm` and `/tmp/*` directories
+- **Native packages**: Using `python3-pyosmium` instead of pip install eliminates pip cache
 - **Impact**: Reduces final image size by removing unnecessary build artifacts
 
-### 2. Layer Optimization
+### 3. Layer Optimization
+- **Combined Node.js setup**: Node.js repository setup and package installation in single layer
 - **Combined font downloads**: Merged two separate RUN commands for font downloads into a single layer
 - **Combined Apache configuration**: Consolidated Apache module loading and log configuration into a single RUN command
-- **Combined package installations**: Pip and npm package installations now happen in a single layer with cleanup
-- **Impact**: Reduces the number of image layers from ~25 to ~22, improving build caching and reducing image overhead
+- **Impact**: Reduces the number of image layers, improving build caching and reducing image overhead
 
 ## Docker Compose Production Enhancements
 

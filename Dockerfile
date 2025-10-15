@@ -1,4 +1,4 @@
-FROM ubuntu:22.04 AS compiler-common
+FROM debian:trixie-20250929-slim AS compiler-common
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
@@ -7,7 +7,7 @@ RUN apt-get update \
 && apt-get install -y --no-install-recommends \
  ca-certificates gnupg lsb-release locales \
  wget curl \
- git-core unzip unrar \
+ git-core unzip unrar-free \
 && locale-gen $LANG && update-locale LANG=$LANG \
 && sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
 && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg \
@@ -49,11 +49,13 @@ ENV AUTOVACUUM=on
 ENV UPDATES=disabled
 ENV REPLICATION_URL=https://planet.openstreetmap.org/replication/hour/
 ENV MAX_INTERVAL_SECONDS=3600
+ENV MAPNIK_INPUT_PLUGINS_DIRECTORY=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input
 
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Get packages
-RUN apt-get update \
+# Install Node.js 22.x LTS from NodeSource and get packages in a single layer
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+&& apt-get update \
 && apt-get install -y --no-install-recommends \
  apache2 \
  cron \
@@ -68,7 +70,7 @@ RUN apt-get update \
  liblua5.3-dev \
  lua5.3 \
  mapnik-utils \
- npm \
+ nodejs \
  osm2pgsql \
  osmium-tool \
  osmosis \
@@ -79,6 +81,7 @@ RUN apt-get update \
  python3-psycopg2 \
  python3-shapely \
  python3-pip \
+ python3-pyosmium \
  python3-yaml \
  python3-requests \
  renderd \
@@ -94,9 +97,8 @@ RUN adduser --disabled-password --gecos "" renderer
 RUN wget https://github.com/googlefonts/noto-emoji/blob/9a5261d871451f9b5183c93483cbd68ed916b1e9/fonts/NotoEmoji-Regular.ttf?raw=true --content-disposition -P /usr/share/fonts/ \
 && wget https://github.com/stamen/terrain-classic/blob/master/fonts/unifont-Medium.ttf?raw=true --content-disposition -P /usr/share/fonts/
 
-# Install Python and Node.js packages with cache cleanup
-RUN pip3 install --no-cache-dir osmium \
-&& npm install -g carto@1.2.0 \
+# Install Node.js packages with cache cleanup
+RUN npm install -g carto@1.2.0 \
 && npm cache clean --force \
 && rm -rf /root/.npm /tmp/*
 
@@ -155,7 +157,8 @@ XML=/home/renderer/src/openstreetmap-carto/mapnik.xml \n\
 HOST=localhost \n\
 TILESIZE=256 \n\
 MAXZOOM=20' >> /etc/renderd.conf \
- && sed -i 's,/usr/share/fonts/truetype,/usr/share/fonts,g' /etc/renderd.conf
+ && sed -i 's,/usr/share/fonts/truetype,/usr/share/fonts,g' /etc/renderd.conf \
+ && sed -i 's,plugins_dir=/usr/lib/mapnik/3.1/input,plugins_dir=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input,g' /etc/renderd.conf
 
 # Install helper script
 COPY --from=compiler-helper-script /home/renderer/src/regional /home/renderer/src/regional

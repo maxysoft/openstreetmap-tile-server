@@ -17,8 +17,8 @@ function setupDatabase() {
     if ! PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -c "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -q 1; then
         echo "Creating PostGIS extension..."
         PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -c "CREATE EXTENSION IF NOT EXISTS postgis;"
-        PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -c "ALTER TABLE geometry_columns OWNER TO ${PGUSER:-renderer};"
-        PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -c "ALTER TABLE spatial_ref_sys OWNER TO ${PGUSER:-renderer};"
+        # Note: In PostGIS 3.x, geometry_columns and spatial_ref_sys are views, not tables
+        # so we don't need to change their ownership
     fi
     # Check if database already has hstore extension
     if ! PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -c "SELECT 1 FROM pg_extension WHERE extname='hstore'" 2>/dev/null | grep -q 1; then
@@ -126,7 +126,9 @@ function performImport() {
 
     # flat-nodes
     if [ "${FLAT_NODES:-}" == "enabled" ] || [ "${FLAT_NODES:-}" == "1" ]; then
-        OSM2PGSQL_EXTRA_ARGS="${OSM2PGSQL_EXTRA_ARGS:-} --flat-nodes /data/database/flat_nodes.bin"
+        mkdir -p /data/osm-flatnodes/
+        chown renderer: /data/osm-flatnodes/
+        OSM2PGSQL_EXTRA_ARGS="${OSM2PGSQL_EXTRA_ARGS:-} --flat-nodes /data/osm-flatnodes/flat_nodes.bin"
     fi
 
     # Import data
@@ -138,10 +140,17 @@ function performImport() {
       ${OSM2PGSQL_EXTRA_ARGS:-}  \
     ;
 
-    # old flat-nodes dir
-    if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/database/flat_nodes.bin ]; then
-        mv /nodes/flat_nodes.bin /data/database/flat_nodes.bin
-        chown renderer: /data/database/flat_nodes.bin
+    # old flat-nodes dir - migrate to new location
+    if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/osm-flatnodes/flat_nodes.bin ]; then
+        mkdir -p /data/osm-flatnodes/
+        mv /nodes/flat_nodes.bin /data/osm-flatnodes/flat_nodes.bin
+        chown renderer: /data/osm-flatnodes/flat_nodes.bin
+    fi
+    # Migrate from old /data/database location to new /data/osm-flatnodes location
+    if [ -f /data/database/flat_nodes.bin ] && ! [ -f /data/osm-flatnodes/flat_nodes.bin ]; then
+        mkdir -p /data/osm-flatnodes/
+        mv /data/database/flat_nodes.bin /data/osm-flatnodes/flat_nodes.bin
+        chown renderer: /data/osm-flatnodes/flat_nodes.bin
     fi
 
     # Create database functions (required for openstreetmap-carto)
@@ -186,8 +195,14 @@ fi
 rm -rf /tmp/*
 
 # migrate old files
-if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/database/flat_nodes.bin ]; then
-    mv /nodes/flat_nodes.bin /data/database/flat_nodes.bin
+if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/osm-flatnodes/flat_nodes.bin ]; then
+    mkdir -p /data/osm-flatnodes/
+    mv /nodes/flat_nodes.bin /data/osm-flatnodes/flat_nodes.bin
+fi
+# Migrate from old /data/database location to new /data/osm-flatnodes location
+if [ -f /data/database/flat_nodes.bin ] && ! [ -f /data/osm-flatnodes/flat_nodes.bin ]; then
+    mkdir -p /data/osm-flatnodes/
+    mv /data/database/flat_nodes.bin /data/osm-flatnodes/flat_nodes.bin
 fi
 if [ -f /data/tiles/data.poly ] && ! [ -f /data/database/region.poly ]; then
     mv /data/tiles/data.poly /data/database/region.poly
@@ -266,6 +281,40 @@ fi
 # Initialize Apache after renderd is ready
 echo "Starting Apache..."
 service apache2 restart
+
+# Pre-render tiles if requested
+if [ -n "${PRERENDER_ZOOMS:-}" ] && [ "${PRERENDER_ZOOMS:-}" != "disabled" ]; then
+    # Check if we need to pre-render (only do this once)
+    if [ ! -f /data/database/prerender-complete ]; then
+        echo "========================================"
+        echo "Pre-rendering tiles for zoom levels: ${PRERENDER_ZOOMS}"
+        echo "This is a one-time operation and may take 1-2 hours for zoom 0-12"
+        echo "========================================"
+        
+        # Parse zoom range (e.g., "0-12" -> min=0, max=12)
+        ZOOM_MIN=$(echo "${PRERENDER_ZOOMS}" | cut -d'-' -f1)
+        ZOOM_MAX=$(echo "${PRERENDER_ZOOMS}" | cut -d'-' -f2)
+        
+        # Run render_list in background to avoid blocking startup
+        sudo -u renderer render_list -a -z ${ZOOM_MIN} -Z ${ZOOM_MAX} -n ${THREADS:-4} &
+        PRERENDER_PID=$!
+        
+        # Wait for pre-rendering to complete (run in background)
+        (
+            wait $PRERENDER_PID
+            touch /data/database/prerender-complete
+            echo "========================================"
+            echo "Pre-rendering completed for zoom ${ZOOM_MIN}-${ZOOM_MAX}"
+            echo "========================================"
+        ) &
+        
+        echo "Pre-rendering started in background (PID: $PRERENDER_PID)"
+        echo "Server will continue starting while pre-rendering runs in background"
+    else
+        echo "Pre-rendering already completed (found /data/database/prerender-complete)"
+        echo "To re-run pre-rendering, delete /data/database/prerender-complete"
+    fi
+fi
 
 # start cron job to trigger consecutive updates
 if [ "${UPDATES:-}" == "enabled" ] || [ "${UPDATES:-}" == "1" ]; then

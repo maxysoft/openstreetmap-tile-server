@@ -50,8 +50,13 @@ services:
       PGUSER: osm_usr
       PGPASSWORD: Random_Password
       PGDATABASE: osm_tiles
+      # Performance tuning - adjust based on your system
+      THREADS: 4              # Set to ~75% of CPU cores (e.g., 12 for 16-core system)
+      FLAT_NODES: disabled    # Enable for datasets >1GB (requires additional disk space)
+      PRERENDER_ZOOMS: 0-12   # Pre-render zoom levels (e.g., "0-12" or "disabled")
     volumes:
       - osm-tiles:/data/tiles/
+      - osm-flatnodes:/data/osm-flatnodes/  # Required when FLAT_NODES=enabled
     ports:
       - "8080:80"
     depends_on:
@@ -68,3 +73,4 @@ networks:
 volumes:
   osm-data:
   osm-tiles:
+  osm-flatnodes:
