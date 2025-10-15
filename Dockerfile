@@ -1,4 +1,4 @@
-FROM ubuntu:22.04 AS compiler-common
+FROM debian:trixie-20250929-slim AS compiler-common
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
@@ -52,6 +52,9 @@ ENV MAX_INTERVAL_SECONDS=3600
 
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
+# Install Node.js 22.x LTS from NodeSource
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+
 # Get packages
 RUN apt-get update \
 && apt-get install -y --no-install-recommends \
@@ -68,7 +71,7 @@ RUN apt-get update \
  liblua5.3-dev \
  lua5.3 \
  mapnik-utils \
- npm \
+ nodejs \
  osm2pgsql \
  osmium-tool \
  osmosis \

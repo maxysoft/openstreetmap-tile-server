@@ -224,10 +224,17 @@ jobs:
         CARTO_VERSION=$(grep -oP 'git clone.*--branch \K[^ ]+' Dockerfile | head -1)
         echo "carto_version=${CARTO_VERSION}" >> $GITHUB_OUTPUT
         
-        # Extract base image and convert to tag format (e.g., ubuntu:22.04 -> ubuntu-22)
+        # Extract base image and convert to tag format
+        # Handles: ubuntu:22.04 -> ubuntu-22, debian:trixie-20250929-slim -> debian-trixie
         BASE_IMAGE=$(grep -oP '^FROM \K[^ ]+' Dockerfile | head -1)
         BASE_NAME=$(echo $BASE_IMAGE | cut -d: -f1)
-        BASE_VERSION=$(echo $BASE_IMAGE | cut -d: -f2 | cut -d. -f1)
+        BASE_FULL_VERSION=$(echo $BASE_IMAGE | cut -d: -f2)
+        # For debian:trixie-* format, extract just "trixie", for ubuntu:22.04 format, extract major version
+        if [[ $BASE_FULL_VERSION == trixie* ]]; then
+          BASE_VERSION="trixie"
+        else
+          BASE_VERSION=$(echo $BASE_FULL_VERSION | cut -d. -f1 | cut -d- -f1)
+        fi
         BASE_TAG="${BASE_NAME}-${BASE_VERSION}"
         echo "base_tag=${BASE_TAG}" >> $GITHUB_OUTPUT
         
