@@ -49,6 +49,7 @@ ENV AUTOVACUUM=on
 ENV UPDATES=disabled
 ENV REPLICATION_URL=https://planet.openstreetmap.org/replication/hour/
 ENV MAX_INTERVAL_SECONDS=3600
+ENV MAPNIK_INPUT_PLUGINS_DIRECTORY=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input
 
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
