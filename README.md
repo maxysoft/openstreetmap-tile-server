@@ -7,9 +7,12 @@ This container allows you to easily set up an OpenStreetMap PNG tile server give
 
 **Base Image:** Debian Trixie (Stable) - `debian:trixie-20250929-slim`  
 **Node.js Version:** 22.x LTS (Jod) with npm 10.9.3  
-**Carto Version:** 1.2.0 (latest)
+**Carto Version:** 1.2.0 (latest)  
+**Tile Rendering:** Tirex 0.7.0 with Mapnik 3.1
 
 **Note:** This tile server requires an external PostGIS database. The tile server container connects to a separate PostgreSQL/PostGIS instance (using the `postgis/postgis:18-3.6` image).
+
+**Recent Change:** This tile server has been migrated from `renderd` to `tirex` for improved performance and compatibility with Debian Trixie. See the [Recent Updates](#recent-updates) section for details.
 
 ## Setting up and running the server
 
@@ -246,6 +249,20 @@ The default password is `renderer`, but it can be changed by setting the `POSTGR
 
 Details for update procedure and invoked scripts can be found here [link](https://ircama.github.io/osm-carto-tutorials/updating-data/).
 
+### DISABLE_DEBUG_MODE
+
+By default, the container runs with bash debug mode enabled (`set -x`), which shows all executed commands in the logs. This can be helpful for debugging but may be verbose for production use. You can disable debug mode by setting the `DISABLE_DEBUG_MODE` environment variable to `1` or `enabled`:
+
+```
+docker run \
+    -p 8080:80 \
+    -e DISABLE_DEBUG_MODE=1 \
+    -v osm-tiles:/data/tiles/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
+    -d overv/openstreetmap-tile-server
+```
+
 ### THREADS
 
 The import and tile serving processes use 4 threads by default, but this number can be changed by setting the `THREADS` environment variable. For example:
@@ -333,6 +350,28 @@ For too high values you may notice excessive CPU load and memory usage. It might
 You may be running into problems with memory usage during the import. Have a look at the "Flat nodes" section in this README.
 
 ## Recent Updates
+
+### Migration to Tirex (October 2025)
+
+The tile server has been migrated from `renderd` to `tirex` for better compatibility with Debian Trixie and improved tile rendering:
+
+- **Tile Rendering**: Switched from `renderd` (mod_tile) to `tirex` 0.7.0
+- **Mapnik Version**: Using Mapnik 3.1 (included with tirex on Debian Trixie)
+- **Architecture Changes**:
+  - Replaced `renderd` daemon with `tirex-master` and `tirex-backend-manager`
+  - Updated socket path from `/run/renderd/renderd.sock` to `/run/tirex/modtile.sock`
+  - Updated tile cache directory from `/var/cache/renderd` to `/var/cache/tirex`
+  - Pre-rendering now uses `tirex-batch` instead of `render_list`
+  - Tile expiry uses custom logic compatible with tirex
+- **New Features**:
+  - Added `DISABLE_DEBUG_MODE` environment variable to control bash debug output
+  - Improved tile caching configuration in Apache
+  - Better separation between master and backend rendering processes
+- **Benefits**:
+  - More robust tile rendering with tirex's proven architecture
+  - Better compatibility with Debian Trixie packages
+  - Improved performance and scalability
+  - Active maintenance and community support
 
 ### Base Image Migration (October 2025)
 
