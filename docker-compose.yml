@@ -45,15 +45,33 @@ services:
     shm_size: 256MB
     # command: "run"  # Optional: Legacy command, container auto-detects and imports if needed
     environment:
+      # PostgreSQL connection parameters
       PGHOST: tile-server-db
       PGPORT: 5432
       PGUSER: osm_usr
       PGPASSWORD: Random_Password
       PGDATABASE: osm_tiles
+      
+      # Data import configuration
+      # Uncomment to automatically download and import OSM data on first run
+      # DOWNLOAD_PBF: https://download.geofabrik.de/europe/luxembourg-latest.osm.pbf
+      # DOWNLOAD_POLY: https://download.geofabrik.de/europe/luxembourg.poly
+      
       # Performance tuning - adjust based on your system
       THREADS: 4              # Set to ~75% of CPU cores (e.g., 12 for 16-core system)
       FLAT_NODES: disabled    # Enable for datasets >1GB (requires additional disk space)
       PRERENDER_ZOOMS: 0-12   # Pre-render zoom levels (e.g., "0-12" or "disabled")
+      
+      # Updates configuration
+      # UPDATES: disabled     # Set to "enabled" to enable automatic updates
+      # REPLICATION_URL: https://planet.openstreetmap.org/replication/hour/
+      # MAX_INTERVAL_SECONDS: 3600
+      
+      # CORS configuration
+      # ALLOW_CORS: disabled  # Set to "enabled" to enable CORS headers
+      
+      # Debug mode
+      # DEBUG_MODE: disabled  # Set to "enabled" or "1" to enable bash debug mode
     volumes:
       - osm-tiles:/data/tiles/
       - osm-flatnodes:/data/osm-flatnodes/  # Required when FLAT_NODES=enabled
