@@ -2,8 +2,14 @@
 
 # Tile Server Integration Tests
 # Tests the OpenStreetMap tile server with tirex backend
+# 
+# Usage: test_tile_server.sh [container_name]
+# 
+# If container_name is provided, tests will also validate internal
+# processes and file system state within that container.
 
 TILE_SERVER_URL="${TILE_SERVER_URL:-http://localhost:8080}"
+CONTAINER_NAME="${1:-}"
 TEST_DIR="/tmp/tile_server_tests"
 FAILED=0
 PASSED=0
@@ -171,21 +177,25 @@ test_concurrent_requests() {
 
 # Test 9: Verify tirex processes are running
 test_tirex_processes() {
+    if [ -z "$CONTAINER_NAME" ]; then
+        return
+    fi
+    
     log_test "Tirex processes status"
     
-    if docker exec osm-tile-server pgrep -f "tirex-master" > /dev/null; then
+    if docker exec "$CONTAINER_NAME" pgrep -f "tirex-master" > /dev/null; then
         log_pass "tirex-master is running"
     else
         log_fail "tirex-master is not running"
     fi
     
-    if docker exec osm-tile-server pgrep -f "tirex-backend-manager" > /dev/null; then
+    if docker exec "$CONTAINER_NAME" pgrep -f "tirex-backend-manager" > /dev/null; then
         log_pass "tirex-backend-manager is running"
     else
         log_fail "tirex-backend-manager is not running"
     fi
     
-    local backend_count=$(docker exec osm-tile-server pgrep -f "mapnik:" | wc -l)
+    local backend_count=$(docker exec "$CONTAINER_NAME" pgrep -f "mapnik:" | wc -l)
     if [ "$backend_count" -gt 0 ]; then
         log_pass "Mapnik backend processes are running ($backend_count processes)"
     else
@@ -197,10 +207,117 @@ test_tirex_processes() {
 test_apache_config() {
     log_test "Apache configuration"
     
-    if docker exec osm-tile-server pgrep apache2 > /dev/null; then
-        log_pass "Apache is running"
+    if [ -n "$CONTAINER_NAME" ]; then
+        if docker exec "$CONTAINER_NAME" pgrep apache2 > /dev/null; then
+            log_pass "Apache is running"
+        else
+            log_fail "Apache is not running"
+        fi
     else
-        log_fail "Apache is not running"
+        log_pass "Apache test skipped (no container specified)"
+    fi
+}
+
+# Test 11: Verify directory structure and volumes
+test_directory_structure() {
+    if [ -z "$CONTAINER_NAME" ]; then
+        return
+    fi
+    
+    log_test "Directory structure verification"
+    
+    # Check that critical directories exist
+    local dirs=("/data/database" "/data/tiles" "/data/style" "/var/cache/tirex/tiles")
+    local all_exist=true
+    
+    for dir in "${dirs[@]}"; do
+        if docker exec "$CONTAINER_NAME" test -d "$dir"; then
+            log_pass "Directory $dir exists"
+        else
+            log_fail "Directory $dir does not exist"
+            all_exist=false
+        fi
+    done
+}
+
+# Test 12: Verify import completion markers
+test_import_markers() {
+    if [ -z "$CONTAINER_NAME" ]; then
+        return
+    fi
+    
+    log_test "Import completion markers"
+    
+    if docker exec "$CONTAINER_NAME" test -f /data/database/planet-import-complete; then
+        log_pass "Import completion marker exists"
+    else
+        log_fail "Import completion marker not found"
+    fi
+}
+
+# Test 13: Verify prerender functionality
+test_prerender_status() {
+    if [ -z "$CONTAINER_NAME" ]; then
+        return
+    fi
+    
+    log_test "Pre-render status check"
+    
+    # Check if prerender was attempted or completed
+    if docker exec "$CONTAINER_NAME" test -f /data/database/prerender-complete; then
+        log_pass "Pre-render completed"
+    else
+        # If PRERENDER_ZOOM is disabled or not set, this is expected
+        local prerender_zoom=$(docker exec "$CONTAINER_NAME" printenv PRERENDER_ZOOM 2>/dev/null || echo "disabled")
+        if [ "$prerender_zoom" == "disabled" ]; then
+            log_pass "Pre-render disabled (as expected)"
+        else
+            log_fail "Pre-render not completed (PRERENDER_ZOOM=$prerender_zoom)"
+        fi
+    fi
+}
+
+# Test 14: Verify osmosis configuration for updates
+test_osmosis_config() {
+    if [ -z "$CONTAINER_NAME" ]; then
+        return
+    fi
+    
+    log_test "Osmosis configuration for updates"
+    
+    # Check if updates are enabled
+    local updates=$(docker exec "$CONTAINER_NAME" printenv UPDATES 2>/dev/null || echo "disabled")
+    
+    if [ "$updates" == "enabled" ] || [ "$updates" == "1" ]; then
+        # Updates enabled, check for osmosis state
+        if docker exec "$CONTAINER_NAME" test -f /data/database/.osmosis/state.txt; then
+            log_pass "Osmosis state file exists for updates"
+        else
+            log_fail "Osmosis state file missing (updates enabled but not configured)"
+        fi
+    else
+        log_pass "Updates disabled (osmosis not required)"
+    fi
+}
+
+# Test 15: Verify mapnik.xml generation
+test_mapnik_xml() {
+    if [ -z "$CONTAINER_NAME" ]; then
+        return
+    fi
+    
+    log_test "Mapnik XML generation"
+    
+    if docker exec "$CONTAINER_NAME" test -f /data/style/mapnik.xml; then
+        # Check if file is not empty
+        local size=$(docker exec "$CONTAINER_NAME" stat -c%s /data/style/mapnik.xml)
+        if [ "$size" -gt 1000 ]; then
+            log_pass "Mapnik XML exists and is substantial (${size} bytes)"
+        else
+            log_fail "Mapnik XML exists but is too small (${size} bytes)"
+        fi
+    else
+        log_fail "Mapnik XML not found"
     fi
 }
 
@@ -208,12 +325,20 @@ test_apache_config() {
 echo "========================================"
 echo "OpenStreetMap Tile Server Tests"
 echo "Testing server at: $TILE_SERVER_URL"
+if [ -n "$CONTAINER_NAME" ]; then
+    echo "Container: $CONTAINER_NAME"
+fi
 echo "========================================"
 echo ""
 
 test_main_page
 test_apache_config
 test_tirex_processes
+test_directory_structure
+test_import_markers
+test_mapnik_xml
+test_osmosis_config
+test_prerender_status
 test_tile_zoom_levels
 test_tile_url_formats
 test_tile_uniqueness

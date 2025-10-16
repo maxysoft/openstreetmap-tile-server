@@ -160,9 +160,32 @@ docker run ... overv/openstreetmap-tile-server run
 
 However, these are optional. The recommended approach is to simply start the container without specifying a command, and it will automatically handle everything.
 
-### Preserving rendered tiles
+### Preserving rendered tiles and server state
 
-Tiles that have already been rendered will be stored in `/data/tiles/`. The tiles volume is already configured in the examples above to persist rendered tiles across container restarts.
+**Tiles**: Rendered tiles are stored in `/data/tiles/`. The tiles volume is already configured in the examples above to persist rendered tiles across container restarts.
+
+**Server state** (optional but recommended): The `/data/database/` directory contains important server state:
+- Import completion markers (`planet-import-complete`, `prerender-complete`)
+- Region boundary file (`region.poly`)
+- Osmosis replication state (`.osmosis/state.txt` - required for updates)
+
+While this directory can remain ephemeral for simple deployments, mounting it as a volume is recommended for:
+- Preserving update replication state across restarts
+- Avoiding re-running prerender on container restart
+- Faster container startup (skips import detection)
+
+Example with state volume:
+```
+docker volume create osm-database
+docker run -p 8080:80 \
+    -v osm-tiles:/data/tiles/ \
+    -v osm-database:/data/database/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
+    -d overv/openstreetmap-tile-server
+```
+
+**Note**: The harmless warning "ERROR: Did not find table 'osm2pgsql_properties'" during first import is expected - osm2pgsql is checking for previous imports.
 
 ### Enabling automatic updating (optional)
 
