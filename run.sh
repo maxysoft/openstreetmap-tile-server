@@ -2,6 +2,11 @@
 
 set -euo pipefail
 
+# Disable bash debug mode if requested
+if [ "${DISABLE_DEBUG_MODE:-}" != "1" ] && [ "${DISABLE_DEBUG_MODE:-}" != "enabled" ]; then
+    set -x
+fi
+
 function waitForPostgres() {
     echo "Waiting for PostgreSQL at ${PGHOST}:${PGPORT}..."
     until PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -c '\q' 2>/dev/null; do
@@ -48,8 +53,6 @@ if [ -n "$COMMAND" ] && [ "$COMMAND" != "import" ] && [ "$COMMAND" != "run" ]; t
     echo "    NAME_SQL: name of the .sql file to use"
     exit 1
 fi
-
-set -x
 
 # if there is no custom style mounted, then use osm-carto
 if [ ! "$(ls -A /data/style/)" ]; then
@@ -217,7 +220,7 @@ if ! [ -f /data/tiles/planet-import-complete ] && [ -f /data/database/planet-imp
 fi
 
 # Ensure proper permissions for tile directory
-chown -R renderer: /data/tiles /var/cache/renderd
+chown -R renderer: /data/tiles /var/cache/tirex
 
 # Wait for PostgreSQL to be ready
 waitForPostgres
@@ -251,23 +254,35 @@ else
     echo "Database already contains imported OSM data - skipping import."
 fi
 
-# Configure renderd threads
-sed -i -E "s/num_threads=[0-9]+/num_threads=${THREADS:-4}/g" /etc/renderd.conf
+# Configure tirex backend processes based on THREADS
+sed -i -E "s/^procs=.*/procs=${THREADS:-4}/g" /etc/tirex/renderer/mapnik.conf
 
-# Start renderd first and wait for socket
-echo "Starting renderd..."
-sudo -u renderer renderd -f -c /etc/renderd.conf &
-RENDERD_PID=$!
+# Ensure tirex directories exist with proper permissions
+mkdir -p /run/tirex /var/cache/tirex/stats
+chown -R renderer: /run/tirex /var/cache/tirex
 
-# Wait for renderd socket to be created
-echo "Waiting for renderd socket..."
+# Start tirex-master first
+echo "Starting tirex-master..."
+sudo -u renderer tirex-master &
+TIREX_MASTER_PID=$!
+
+# Wait for tirex-master to be ready
+sleep 2
+
+# Start tirex-backend-manager
+echo "Starting tirex-backend-manager..."
+sudo -u renderer tirex-backend-manager &
+TIREX_BACKEND_PID=$!
+
+# Wait for tirex socket to be created
+echo "Waiting for tirex socket..."
 for i in {1..30}; do
-    if [ -S /run/renderd/renderd.sock ]; then
-        echo "Renderd socket is ready!"
+    if [ -S /run/tirex/modtile.sock ]; then
+        echo "Tirex socket is ready!"
         break
     fi
     if [ $i -eq 30 ]; then
-        echo "ERROR: Renderd socket not created after 30 seconds"
+        echo "ERROR: Tirex socket not created after 30 seconds"
         exit 1
     fi
     sleep 1
@@ -282,7 +297,7 @@ fi
 echo "Starting Apache..."
 service apache2 restart
 
-# Pre-render tiles if requested
+# Pre-render tiles if requested using tirex-batch
 if [ -n "${PRERENDER_ZOOMS:-}" ] && [ "${PRERENDER_ZOOMS:-}" != "disabled" ]; then
     # Check if we need to pre-render (only do this once)
     if [ ! -f /data/database/prerender-complete ]; then
@@ -295,8 +310,9 @@ if [ -n "${PRERENDER_ZOOMS:-}" ] && [ "${PRERENDER_ZOOMS:-}" != "disabled" ]; th
         ZOOM_MIN=$(echo "${PRERENDER_ZOOMS}" | cut -d'-' -f1)
         ZOOM_MAX=$(echo "${PRERENDER_ZOOMS}" | cut -d'-' -f2)
         
-        # Run render_list in background to avoid blocking startup
-        sudo -u renderer render_list -a -z ${ZOOM_MIN} -Z ${ZOOM_MAX} -n ${THREADS:-4} &
+        # Run tirex-batch in background to avoid blocking startup
+        # tirex-batch uses a different format than render_list
+        sudo -u renderer tirex-batch --prio=20 map=default z=${ZOOM_MIN}-${ZOOM_MAX} &
         PRERENDER_PID=$!
         
         # Wait for pre-rendering to complete (run in background)
@@ -328,10 +344,10 @@ fi
 
 # Run while handling docker stop's SIGTERM
 stop_handler() {
-    kill -TERM "$RENDERD_PID"
+    kill -TERM "$TIREX_MASTER_PID" "$TIREX_BACKEND_PID"
 }
 trap stop_handler SIGTERM
 
-wait "$RENDERD_PID"
+wait "$TIREX_MASTER_PID"
 
 exit 0
