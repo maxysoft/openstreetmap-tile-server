@@ -79,5 +79,10 @@ Expected results after deploying this fix:
 
 ## Files Changed
 
-- `Dockerfile`: Fixed renderd.conf configuration to properly update the existing [mapnik] section instead of creating a duplicate
+- `Dockerfile`: Fixed renderd.conf configuration to use correct Mapnik plugins directory path `/usr/lib/x86_64-linux-gnu/mapnik/input` instead of incorrect `/usr/lib/x86_64-linux-gnu/mapnik/4.0/input`
+- `Dockerfile`: Updated `MAPNIK_INPUT_PLUGINS_DIRECTORY` environment variable to use correct path
 - `FIX_NOTES.md`: Updated documentation to reflect the actual root cause and solution
+
+## Version-Specific Path Issue
+
+The initial fix incorrectly assumed Mapnik 4.0 plugins would be in a versioned subdirectory (`4.0/input`), but Debian's libmapnik4.0 package installs plugins directly in `/usr/lib/x86_64-linux-gnu/mapnik/input/` without version subdirectory.
