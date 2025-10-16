@@ -154,10 +154,15 @@ RUN mkdir -p /run/renderd/ \
 ;
 
 # Configure renderd with tile settings and correct paths
-# Update plugins_dir to point to Mapnik 4.0 input plugins location
-RUN sed -i 's,plugins_dir=/usr/lib/mapnik/[0-9.]\+/input,plugins_dir=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input,g' /etc/renderd.conf \
- && sed -i 's,/usr/share/fonts/truetype,/usr/share/fonts,g' /etc/renderd.conf \
+# Remove default [mapnik] section and add our own with correct Mapnik 4.0 paths
+# then add [default] tile configuration
+RUN sed -i '/^\[mapnik\]/,/^$/d' /etc/renderd.conf \
  && echo '\n\
+[mapnik] \n\
+plugins_dir=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input \n\
+font_dir=/usr/share/fonts \n\
+font_dir_recurse=true \n\
+\n\
 [default] \n\
 URI=/tile/ \n\
 TILEDIR=/var/cache/renderd/tiles \n\
