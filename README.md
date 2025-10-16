@@ -162,28 +162,33 @@ However, these are optional. The recommended approach is to simply start the con
 
 ### Preserving rendered tiles and server state
 
-**Tiles**: Rendered tiles are stored in `/data/tiles/`. The tiles volume is already configured in the examples above to persist rendered tiles across container restarts.
+**Single /data/ volume** (recommended): All persistent data is now stored under `/data/`:
+- `/data/tiles/` - Rendered tile cache
+- `/data/style/` - OpenStreetMap Carto style files
+- `/data/region.osm.pbf` - Imported OSM data file
+- `/data/region.poly` - Region boundary polygon
+- `/data/planet-import-complete` - Import completion marker
+- `/data/prerender-complete` - Pre-render completion marker
+- `/data/.osmosis/` - Osmosis replication state (for updates)
+- `/data/flat_nodes.bin` - Flat nodes cache (if FLAT_NODES enabled)
 
-**Server state** (optional but recommended): The `/data/database/` directory contains important server state:
-- Import completion markers (`planet-import-complete`, `prerender-complete`)
-- Region boundary file (`region.poly`)
-- Osmosis replication state (`.osmosis/state.txt` - required for updates)
+**Simplified volume mounting**:
+```bash
+docker volume create osm-data
 
-While this directory can remain ephemeral for simple deployments, mounting it as a volume is recommended for:
-- Preserving update replication state across restarts
-- Avoiding re-running prerender on container restart
-- Faster container startup (skips import detection)
-
-Example with state volume:
-```
-docker volume create osm-database
 docker run -p 8080:80 \
-    -v osm-tiles:/data/tiles/ \
-    -v osm-database:/data/database/ \
+    -v osm-data:/data/ \
     --link postgres:postgres \
     -e PGHOST=postgres \
     -d overv/openstreetmap-tile-server
 ```
+
+This single volume mount preserves:
+- Rendered tiles across container restarts
+- Import and prerender completion state
+- Update replication state
+- Region boundary configuration
+- All server state for faster restarts
 
 **Note**: The harmless warning "ERROR: Did not find table 'osm2pgsql_properties'" during first import is expected - osm2pgsql is checking for previous imports.
 

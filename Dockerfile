@@ -137,7 +137,6 @@ ENV PGDATABASE=gis
 
 # Create volume directories
 RUN mkdir -p /run/tirex/ \
-  &&  mkdir  -p  /data/database/  \
   &&  mkdir  -p  /data/style/  \
   &&  mkdir  -p  /home/renderer/src/  \
   &&  chown  -R  renderer:  /data/  \

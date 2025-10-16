@@ -90,9 +90,9 @@ function performImport() {
     echo "Starting OSM data import process..."
     echo "========================================"
     
-    # Ensure that database directory exists
-    mkdir -p /data/database/
-    chown renderer: /data/database/
+    # Ensure that data directory exists
+    mkdir -p /data/
+    chown renderer: /data/
 
     # Setup database extensions
     setupDatabase
@@ -121,17 +121,14 @@ function performImport() {
         sudo -E -u renderer openstreetmap-tiles-update-expire.sh $REPLICATION_TIMESTAMP
     fi
 
-    # copy polygon file if available
-    if [ -f /data/region.poly ]; then
-        cp /data/region.poly /data/database/region.poly
-        chown renderer: /data/database/region.poly
-    fi
+    # copy polygon file if available (no-op now since it's in the same location)
+    # Region poly is already at /data/region.poly
 
     # flat-nodes
     if [ "${FLAT_NODES:-}" == "enabled" ] || [ "${FLAT_NODES:-}" == "1" ]; then
-        mkdir -p /data/osm-flatnodes/
-        chown renderer: /data/osm-flatnodes/
-        OSM2PGSQL_EXTRA_ARGS="${OSM2PGSQL_EXTRA_ARGS:-} --flat-nodes /data/osm-flatnodes/flat_nodes.bin"
+        mkdir -p /data/
+        chown renderer: /data/
+        OSM2PGSQL_EXTRA_ARGS="${OSM2PGSQL_EXTRA_ARGS:-} --flat-nodes /data/flat_nodes.bin"
     fi
 
     # Import data
@@ -144,16 +141,19 @@ function performImport() {
     ;
 
     # old flat-nodes dir - migrate to new location
-    if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/osm-flatnodes/flat_nodes.bin ]; then
-        mkdir -p /data/osm-flatnodes/
-        mv /nodes/flat_nodes.bin /data/osm-flatnodes/flat_nodes.bin
-        chown renderer: /data/osm-flatnodes/flat_nodes.bin
+    if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/flat_nodes.bin ]; then
+        mkdir -p /data/
+        mv /nodes/flat_nodes.bin /data/flat_nodes.bin
+        chown renderer: /data/flat_nodes.bin
     fi
-    # Migrate from old /data/database location to new /data/osm-flatnodes location
-    if [ -f /data/database/flat_nodes.bin ] && ! [ -f /data/osm-flatnodes/flat_nodes.bin ]; then
-        mkdir -p /data/osm-flatnodes/
-        mv /data/database/flat_nodes.bin /data/osm-flatnodes/flat_nodes.bin
-        chown renderer: /data/osm-flatnodes/flat_nodes.bin
+    # Migrate from old /data/osm-flatnodes/ or /data/database/ location
+    if [ -f /data/database/flat_nodes.bin ] && ! [ -f /data/flat_nodes.bin ]; then
+        mv /data/database/flat_nodes.bin /data/flat_nodes.bin
+        chown renderer: /data/flat_nodes.bin
+    fi
+    if [ -f /data/osm-flatnodes/flat_nodes.bin ] && ! [ -f /data/flat_nodes.bin ]; then
+        mv /data/osm-flatnodes/flat_nodes.bin /data/flat_nodes.bin
+        chown renderer: /data/flat_nodes.bin
     fi
 
     # Create database functions (required for openstreetmap-carto)
@@ -175,7 +175,7 @@ function performImport() {
     fi
 
     # Register that data has changed for mod_tile caching purposes
-    sudo -u renderer touch /data/database/planet-import-complete
+    sudo -u renderer touch /data/planet-import-complete
     
     echo "========================================"
     echo "Import completed successfully!"
@@ -198,25 +198,31 @@ fi
 rm -rf /tmp/*
 
 # migrate old files
-if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/osm-flatnodes/flat_nodes.bin ]; then
-    mkdir -p /data/osm-flatnodes/
-    mv /nodes/flat_nodes.bin /data/osm-flatnodes/flat_nodes.bin
+if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/flat_nodes.bin ]; then
+    mkdir -p /data/
+    mv /nodes/flat_nodes.bin /data/flat_nodes.bin
 fi
-# Migrate from old /data/database location to new /data/osm-flatnodes location
-if [ -f /data/database/flat_nodes.bin ] && ! [ -f /data/osm-flatnodes/flat_nodes.bin ]; then
-    mkdir -p /data/osm-flatnodes/
-    mv /data/database/flat_nodes.bin /data/osm-flatnodes/flat_nodes.bin
+# Migrate from old /data/osm-flatnodes/ or /data/database/ location
+if [ -f /data/database/flat_nodes.bin ] && ! [ -f /data/flat_nodes.bin ]; then
+    mv /data/database/flat_nodes.bin /data/flat_nodes.bin
 fi
-if [ -f /data/tiles/data.poly ] && ! [ -f /data/database/region.poly ]; then
-    mv /data/tiles/data.poly /data/database/region.poly
+if [ -f /data/osm-flatnodes/flat_nodes.bin ] && ! [ -f /data/flat_nodes.bin ]; then
+    mv /data/osm-flatnodes/flat_nodes.bin /data/flat_nodes.bin
+fi
+if [ -f /data/tiles/data.poly ] && ! [ -f /data/region.poly ]; then
+    mv /data/tiles/data.poly /data/region.poly
 fi
 
 # sync planet-import-complete file
-if [ -f /data/tiles/planet-import-complete ] && ! [ -f /data/database/planet-import-complete ]; then
-    cp /data/tiles/planet-import-complete /data/database/planet-import-complete
+if [ -f /data/tiles/planet-import-complete ] && ! [ -f /data/planet-import-complete ]; then
+    cp /data/tiles/planet-import-complete /data/planet-import-complete
 fi
-if ! [ -f /data/tiles/planet-import-complete ] && [ -f /data/database/planet-import-complete ]; then
-    cp /data/database/planet-import-complete /data/tiles/planet-import-complete
+if [ -f /data/database/planet-import-complete ] && ! [ -f /data/planet-import-complete ]; then
+    cp /data/database/planet-import-complete /data/planet-import-complete
+fi
+# Ensure backwards compatibility - keep copy in /data/tiles/ too
+if ! [ -f /data/tiles/planet-import-complete ] && [ -f /data/planet-import-complete ]; then
+    cp /data/planet-import-complete /data/tiles/planet-import-complete
 fi
 
 # Ensure proper permissions for tile directory
@@ -311,7 +317,7 @@ service apache2 restart
 # Pre-render tiles if requested using tirex-batch
 if [ -n "${PRERENDER_ZOOMS:-}" ] && [ "${PRERENDER_ZOOMS:-}" != "disabled" ]; then
     # Check if we need to pre-render (only do this once)
-    if [ ! -f /data/database/prerender-complete ]; then
+    if [ ! -f /data/prerender-complete ]; then
         echo "========================================"
         echo "Pre-rendering tiles for zoom levels: ${PRERENDER_ZOOMS}"
         echo "This is a one-time operation and may take 1-2 hours for zoom 0-12"
@@ -329,7 +335,7 @@ if [ -n "${PRERENDER_ZOOMS:-}" ] && [ "${PRERENDER_ZOOMS:-}" != "disabled" ]; th
         # Wait for pre-rendering to complete (run in background)
         (
             wait $PRERENDER_PID
-            touch /data/database/prerender-complete
+            touch /data/prerender-complete
             echo "========================================"
             echo "Pre-rendering completed for zoom ${ZOOM_MIN}-${ZOOM_MAX}"
             echo "========================================"
@@ -338,8 +344,8 @@ if [ -n "${PRERENDER_ZOOMS:-}" ] && [ "${PRERENDER_ZOOMS:-}" != "disabled" ]; th
         echo "Pre-rendering started in background (PID: $PRERENDER_PID)"
         echo "Server will continue starting while pre-rendering runs in background"
     else
-        echo "Pre-rendering already completed (found /data/database/prerender-complete)"
-        echo "To re-run pre-rendering, delete /data/database/prerender-complete"
+        echo "Pre-rendering already completed (found /data/prerender-complete)"
+        echo "To re-run pre-rendering, delete /data/prerender-complete"
     fi
 fi
 

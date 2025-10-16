@@ -227,7 +227,7 @@ test_directory_structure() {
     log_test "Directory structure verification"
     
     # Check that critical directories exist
-    local dirs=("/data/database" "/data/tiles" "/data/style" "/var/cache/tirex/tiles")
+    local dirs=("/data" "/data/tiles" "/data/style" "/var/cache/tirex/tiles")
     local all_exist=true
     
     for dir in "${dirs[@]}"; do
@@ -248,7 +248,7 @@ test_import_markers() {
     
     log_test "Import completion markers"
     
-    if docker exec "$CONTAINER_NAME" test -f /data/database/planet-import-complete; then
+    if docker exec "$CONTAINER_NAME" test -f /data/planet-import-complete; then
         log_pass "Import completion marker exists"
     else
         log_fail "Import completion marker not found"
@@ -264,15 +264,15 @@ test_prerender_status() {
     log_test "Pre-render status check"
     
     # Check if prerender was attempted or completed
-    if docker exec "$CONTAINER_NAME" test -f /data/database/prerender-complete; then
+    if docker exec "$CONTAINER_NAME" test -f /data/prerender-complete; then
         log_pass "Pre-render completed"
     else
-        # If PRERENDER_ZOOM is disabled or not set, this is expected
-        local prerender_zoom=$(docker exec "$CONTAINER_NAME" printenv PRERENDER_ZOOM 2>/dev/null || echo "disabled")
-        if [ "$prerender_zoom" == "disabled" ]; then
+        # If PRERENDER_ZOOMS is disabled or not set, this is expected
+        local prerender_zoom=$(docker exec "$CONTAINER_NAME" printenv PRERENDER_ZOOMS 2>/dev/null || echo "disabled")
+        if [ "$prerender_zoom" == "disabled" ] || [ -z "$prerender_zoom" ]; then
             log_pass "Pre-render disabled (as expected)"
         else
-            log_fail "Pre-render not completed (PRERENDER_ZOOM=$prerender_zoom)"
+            log_fail "Pre-render not completed (PRERENDER_ZOOMS=$prerender_zoom)"
         fi
     fi
 }
@@ -290,7 +290,7 @@ test_osmosis_config() {
     
     if [ "$updates" == "enabled" ] || [ "$updates" == "1" ]; then
         # Updates enabled, check for osmosis state
-        if docker exec "$CONTAINER_NAME" test -f /data/database/.osmosis/state.txt; then
+        if docker exec "$CONTAINER_NAME" test -f /data/.osmosis/state.txt; then
             log_pass "Osmosis state file exists for updates"
         else
             log_fail "Osmosis state file missing (updates enabled but not configured)"
