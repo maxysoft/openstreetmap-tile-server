@@ -49,13 +49,12 @@ ENV AUTOVACUUM=on
 ENV UPDATES=disabled
 ENV REPLICATION_URL=https://planet.openstreetmap.org/replication/hour/
 ENV MAX_INTERVAL_SECONDS=3600
-ENV MAPNIK_INPUT_PLUGINS_DIRECTORY=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input
 
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # Install Node.js 22.x LTS from NodeSource and get packages in a single layer
-# Note: libmapnik4.0 is required for Mapnik input plugins (postgis, shape, etc.)
-# Installing only mapnik-utils and python3-mapnik is not sufficient
+# Note: tirex pulls in the correct libmapnik version as a dependency
+# Installing tirex will install libmapnik3.1 on Debian Trixie
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 && apt-get update \
 && apt-get install -y --no-install-recommends \
@@ -70,7 +69,6 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
  gnupg2 \
  gdal-bin \
  liblua5.3-dev \
- libmapnik4.0 \
  lua5.3 \
  mapnik-utils \
  nodejs \
@@ -87,7 +85,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
  python3-pyosmium \
  python3-yaml \
  python3-requests \
- renderd \
+ tirex \
  sudo \
  vim \
 && apt-get clean autoclean \
@@ -109,6 +107,7 @@ RUN npm install -g carto@1.2.0 \
 COPY apache.conf /etc/apache2/sites-available/000-default.conf
 RUN a2enmod tile \
 && a2enmod headers \
+&& a2disconf tirex \
 && ln -sf /dev/stdout /var/log/apache2/access.log \
 && ln -sf /dev/stderr /var/log/apache2/error.log
 
@@ -127,7 +126,6 @@ COPY openstreetmap-tiles-update-expire.sh /usr/bin/
 RUN chmod +x /usr/bin/openstreetmap-tiles-update-expire.sh \
 && mkdir /var/log/tiles \
 && chmod a+rw /var/log/tiles \
-&& ln -s /home/renderer/src/mod_tile/osmosis-db_replag /usr/bin/osmosis-db_replag \
 && echo "* * * * *   renderer    openstreetmap-tiles-update-expire.sh\n" >> /etc/crontab
 
 # Configure environment variables for external PostGIS connection
@@ -138,38 +136,42 @@ ENV PGPASSWORD=renderer
 ENV PGDATABASE=gis
 
 # Create volume directories
-RUN mkdir -p /run/renderd/ \
-  &&  mkdir  -p  /data/database/  \
+RUN mkdir -p /run/tirex/ \
   &&  mkdir  -p  /data/style/  \
   &&  mkdir  -p  /home/renderer/src/  \
   &&  chown  -R  renderer:  /data/  \
   &&  chown  -R  renderer:  /home/renderer/src/  \
-  &&  chown  -R  renderer:  /run/renderd  \
+  &&  chown  -R  renderer:  /run/tirex  \
   &&  mkdir  -p  /data/tiles/  \
   &&  chown  -R  renderer: /data/tiles \
   &&  ln  -s  /data/style              /home/renderer/src/openstreetmap-carto  \
-  &&  mkdir  -p  /var/cache/renderd  \
-  &&  chown  renderer:  /var/cache/renderd  \
-  &&  ln  -s  /data/tiles              /var/cache/renderd/tiles                \
+  &&  mkdir  -p  /var/cache/tirex/tiles  \
+  &&  chown  -R renderer:  /var/cache/tirex  \
+  &&  ln  -s  /data/tiles              /var/cache/tirex/tiles/default                \
 ;
 
-# Configure renderd with tile settings and correct paths
-# Remove default [mapnik] section and add our own with correct Mapnik 4.0 paths
-# then add [default] tile configuration
-RUN sed -i '/^\[mapnik\]/,/^$/d' /etc/renderd.conf \
- && echo '\n\
-[mapnik] \n\
-plugins_dir=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input \n\
-font_dir=/usr/share/fonts \n\
-font_dir_recurse=true \n\
-\n\
-[default] \n\
-URI=/tile/ \n\
-TILEDIR=/var/cache/renderd/tiles \n\
-XML=/home/renderer/src/openstreetmap-carto/mapnik.xml \n\
-HOST=localhost \n\
-TILESIZE=256 \n\
-MAXZOOM=20' >> /etc/renderd.conf
+# Configure tirex with tile settings and correct paths
+# Update tirex.conf for proper socket and stats directories
+RUN sed -i 's|^modtile_socket_name=.*|modtile_socket_name=/run/tirex/modtile.sock|' /etc/tirex/tirex.conf \
+ && sed -i 's|^socket_dir=.*|socket_dir=/run/tirex|' /etc/tirex/tirex.conf \
+ && sed -i 's|^stats_dir=.*|stats_dir=/var/cache/tirex/stats|' /etc/tirex/tirex.conf \
+ && sed -i 's|^master_pidfile=.*|master_pidfile=/run/tirex/tirex-master.pid|' /etc/tirex/tirex.conf \
+ && sed -i 's|^backend_manager_pidfile=.*|backend_manager_pidfile=/run/tirex/tirex-backend-manager.pid|' /etc/tirex/tirex.conf
+
+# Configure mapnik renderer for tirex
+# Note: Debian Trixie actually has Mapnik 4.0 available
+RUN sed -i 's|^plugindir=.*|plugindir=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input|' /etc/tirex/renderer/mapnik.conf \
+ && sed -i 's|^fontdir=.*|fontdir=/usr/share/fonts|' /etc/tirex/renderer/mapnik.conf \
+ && sed -i 's|^procs=.*|procs=4|' /etc/tirex/renderer/mapnik.conf
+
+# Create tirex map configuration for default OpenStreetMap map
+RUN mkdir -p /etc/tirex/renderer/mapnik && \
+    echo '# OpenStreetMap Carto Configuration' > /etc/tirex/renderer/mapnik/default.conf && \
+    echo 'name=default' >> /etc/tirex/renderer/mapnik/default.conf && \
+    echo 'tiledir=/var/cache/tirex/tiles/default' >> /etc/tirex/renderer/mapnik/default.conf && \
+    echo 'minz=0' >> /etc/tirex/renderer/mapnik/default.conf && \
+    echo 'maxz=20' >> /etc/tirex/renderer/mapnik/default.conf && \
+    echo 'mapfile=/home/renderer/src/openstreetmap-carto/mapnik.xml' >> /etc/tirex/renderer/mapnik/default.conf
 
 # Install helper script
 COPY --from=compiler-helper-script /home/renderer/src/regional /home/renderer/src/regional

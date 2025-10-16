@@ -2,6 +2,11 @@
 
 set -euo pipefail
 
+# Enable bash debug mode if requested
+if [ "${DEBUG_MODE:-}" == "1" ] || [ "${DEBUG_MODE:-}" == "enabled" ]; then
+    set -x
+fi
+
 function waitForPostgres() {
     echo "Waiting for PostgreSQL at ${PGHOST}:${PGPORT}..."
     until PGPASSWORD=${PGPASSWORD:-renderer} psql -h ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer} -d ${PGDATABASE:-gis} -c '\q' 2>/dev/null; do
@@ -49,8 +54,6 @@ if [ -n "$COMMAND" ] && [ "$COMMAND" != "import" ] && [ "$COMMAND" != "run" ]; t
     exit 1
 fi
 
-set -x
-
 # if there is no custom style mounted, then use osm-carto
 if [ ! "$(ls -A /data/style/)" ]; then
     mv /home/renderer/src/openstreetmap-carto-backup/* /data/style/
@@ -87,9 +90,9 @@ function performImport() {
     echo "Starting OSM data import process..."
     echo "========================================"
     
-    # Ensure that database directory exists
-    mkdir -p /data/database/
-    chown renderer: /data/database/
+    # Ensure that data directory exists
+    mkdir -p /data/
+    chown renderer: /data/
 
     # Setup database extensions
     setupDatabase
@@ -118,17 +121,14 @@ function performImport() {
         sudo -E -u renderer openstreetmap-tiles-update-expire.sh $REPLICATION_TIMESTAMP
     fi
 
-    # copy polygon file if available
-    if [ -f /data/region.poly ]; then
-        cp /data/region.poly /data/database/region.poly
-        chown renderer: /data/database/region.poly
-    fi
+    # copy polygon file if available (no-op now since it's in the same location)
+    # Region poly is already at /data/region.poly
 
     # flat-nodes
     if [ "${FLAT_NODES:-}" == "enabled" ] || [ "${FLAT_NODES:-}" == "1" ]; then
-        mkdir -p /data/osm-flatnodes/
-        chown renderer: /data/osm-flatnodes/
-        OSM2PGSQL_EXTRA_ARGS="${OSM2PGSQL_EXTRA_ARGS:-} --flat-nodes /data/osm-flatnodes/flat_nodes.bin"
+        mkdir -p /data/
+        chown renderer: /data/
+        OSM2PGSQL_EXTRA_ARGS="${OSM2PGSQL_EXTRA_ARGS:-} --flat-nodes /data/flat_nodes.bin"
     fi
 
     # Import data
@@ -141,16 +141,19 @@ function performImport() {
     ;
 
     # old flat-nodes dir - migrate to new location
-    if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/osm-flatnodes/flat_nodes.bin ]; then
-        mkdir -p /data/osm-flatnodes/
-        mv /nodes/flat_nodes.bin /data/osm-flatnodes/flat_nodes.bin
-        chown renderer: /data/osm-flatnodes/flat_nodes.bin
+    if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/flat_nodes.bin ]; then
+        mkdir -p /data/
+        mv /nodes/flat_nodes.bin /data/flat_nodes.bin
+        chown renderer: /data/flat_nodes.bin
     fi
-    # Migrate from old /data/database location to new /data/osm-flatnodes location
-    if [ -f /data/database/flat_nodes.bin ] && ! [ -f /data/osm-flatnodes/flat_nodes.bin ]; then
-        mkdir -p /data/osm-flatnodes/
-        mv /data/database/flat_nodes.bin /data/osm-flatnodes/flat_nodes.bin
-        chown renderer: /data/osm-flatnodes/flat_nodes.bin
+    # Migrate from old /data/osm-flatnodes/ or /data/database/ location
+    if [ -f /data/database/flat_nodes.bin ] && ! [ -f /data/flat_nodes.bin ]; then
+        mv /data/database/flat_nodes.bin /data/flat_nodes.bin
+        chown renderer: /data/flat_nodes.bin
+    fi
+    if [ -f /data/osm-flatnodes/flat_nodes.bin ] && ! [ -f /data/flat_nodes.bin ]; then
+        mv /data/osm-flatnodes/flat_nodes.bin /data/flat_nodes.bin
+        chown renderer: /data/flat_nodes.bin
     fi
 
     # Create database functions (required for openstreetmap-carto)
@@ -172,7 +175,7 @@ function performImport() {
     fi
 
     # Register that data has changed for mod_tile caching purposes
-    sudo -u renderer touch /data/database/planet-import-complete
+    sudo -u renderer touch /data/planet-import-complete
     
     echo "========================================"
     echo "Import completed successfully!"
@@ -195,29 +198,35 @@ fi
 rm -rf /tmp/*
 
 # migrate old files
-if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/osm-flatnodes/flat_nodes.bin ]; then
-    mkdir -p /data/osm-flatnodes/
-    mv /nodes/flat_nodes.bin /data/osm-flatnodes/flat_nodes.bin
+if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/flat_nodes.bin ]; then
+    mkdir -p /data/
+    mv /nodes/flat_nodes.bin /data/flat_nodes.bin
 fi
-# Migrate from old /data/database location to new /data/osm-flatnodes location
-if [ -f /data/database/flat_nodes.bin ] && ! [ -f /data/osm-flatnodes/flat_nodes.bin ]; then
-    mkdir -p /data/osm-flatnodes/
-    mv /data/database/flat_nodes.bin /data/osm-flatnodes/flat_nodes.bin
+# Migrate from old /data/osm-flatnodes/ or /data/database/ location
+if [ -f /data/database/flat_nodes.bin ] && ! [ -f /data/flat_nodes.bin ]; then
+    mv /data/database/flat_nodes.bin /data/flat_nodes.bin
 fi
-if [ -f /data/tiles/data.poly ] && ! [ -f /data/database/region.poly ]; then
-    mv /data/tiles/data.poly /data/database/region.poly
+if [ -f /data/osm-flatnodes/flat_nodes.bin ] && ! [ -f /data/flat_nodes.bin ]; then
+    mv /data/osm-flatnodes/flat_nodes.bin /data/flat_nodes.bin
+fi
+if [ -f /data/tiles/data.poly ] && ! [ -f /data/region.poly ]; then
+    mv /data/tiles/data.poly /data/region.poly
 fi
 
 # sync planet-import-complete file
-if [ -f /data/tiles/planet-import-complete ] && ! [ -f /data/database/planet-import-complete ]; then
-    cp /data/tiles/planet-import-complete /data/database/planet-import-complete
+if [ -f /data/tiles/planet-import-complete ] && ! [ -f /data/planet-import-complete ]; then
+    cp /data/tiles/planet-import-complete /data/planet-import-complete
 fi
-if ! [ -f /data/tiles/planet-import-complete ] && [ -f /data/database/planet-import-complete ]; then
-    cp /data/database/planet-import-complete /data/tiles/planet-import-complete
+if [ -f /data/database/planet-import-complete ] && ! [ -f /data/planet-import-complete ]; then
+    cp /data/database/planet-import-complete /data/planet-import-complete
+fi
+# Ensure backwards compatibility - keep copy in /data/tiles/ too
+if ! [ -f /data/tiles/planet-import-complete ] && [ -f /data/planet-import-complete ]; then
+    cp /data/planet-import-complete /data/tiles/planet-import-complete
 fi
 
 # Ensure proper permissions for tile directory
-chown -R renderer: /data/tiles /var/cache/renderd
+chown -R renderer: /data/tiles /var/cache/tirex
 
 # Wait for PostgreSQL to be ready
 waitForPostgres
@@ -251,23 +260,46 @@ else
     echo "Database already contains imported OSM data - skipping import."
 fi
 
-# Configure renderd threads
-sed -i -E "s/num_threads=[0-9]+/num_threads=${THREADS:-4}/g" /etc/renderd.conf
+# Configure tirex backend processes based on THREADS
+sed -i -E "s/^procs=.*/procs=${THREADS:-4}/g" /etc/tirex/renderer/mapnik.conf
 
-# Start renderd first and wait for socket
-echo "Starting renderd..."
-sudo -u renderer renderd -f -c /etc/renderd.conf &
-RENDERD_PID=$!
+# Ensure tirex directories exist with proper permissions
+mkdir -p /run/tirex /var/cache/tirex/stats
+chown -R renderer: /run/tirex /var/cache/tirex
 
-# Wait for renderd socket to be created
-echo "Waiting for renderd socket..."
+# Start tirex-master first (in foreground mode with -f flag)
+echo "Starting tirex-master..."
+sudo -u renderer tirex-master -f &
+TIREX_MASTER_PID=$!
+
+# Wait for tirex-master to be ready and create its socket
+echo "Waiting for tirex-master socket..."
 for i in {1..30}; do
-    if [ -S /run/renderd/renderd.sock ]; then
-        echo "Renderd socket is ready!"
+    if [ -S /run/tirex/master.sock ]; then
+        echo "Tirex-master socket is ready!"
         break
     fi
     if [ $i -eq 30 ]; then
-        echo "ERROR: Renderd socket not created after 30 seconds"
+        echo "ERROR: Tirex-master socket not created after 30 seconds"
+        exit 1
+    fi
+    sleep 1
+done
+
+# Start tirex-backend-manager (in foreground mode with -f flag)
+echo "Starting tirex-backend-manager..."
+sudo -u renderer tirex-backend-manager -f &
+TIREX_BACKEND_PID=$!
+
+# Wait for tirex socket to be created
+echo "Waiting for tirex socket..."
+for i in {1..30}; do
+    if [ -S /run/tirex/modtile.sock ]; then
+        echo "Tirex socket is ready!"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo "ERROR: Tirex socket not created after 30 seconds"
         exit 1
     fi
     sleep 1
@@ -282,10 +314,10 @@ fi
 echo "Starting Apache..."
 service apache2 restart
 
-# Pre-render tiles if requested
+# Pre-render tiles if requested using tirex-batch
 if [ -n "${PRERENDER_ZOOMS:-}" ] && [ "${PRERENDER_ZOOMS:-}" != "disabled" ]; then
     # Check if we need to pre-render (only do this once)
-    if [ ! -f /data/database/prerender-complete ]; then
+    if [ ! -f /data/prerender-complete ]; then
         echo "========================================"
         echo "Pre-rendering tiles for zoom levels: ${PRERENDER_ZOOMS}"
         echo "This is a one-time operation and may take 1-2 hours for zoom 0-12"
@@ -295,14 +327,15 @@ if [ -n "${PRERENDER_ZOOMS:-}" ] && [ "${PRERENDER_ZOOMS:-}" != "disabled" ]; th
         ZOOM_MIN=$(echo "${PRERENDER_ZOOMS}" | cut -d'-' -f1)
         ZOOM_MAX=$(echo "${PRERENDER_ZOOMS}" | cut -d'-' -f2)
         
-        # Run render_list in background to avoid blocking startup
-        sudo -u renderer render_list -a -z ${ZOOM_MIN} -Z ${ZOOM_MAX} -n ${THREADS:-4} &
+        # Run tirex-batch in background to avoid blocking startup
+        # tirex-batch uses a different format than render_list
+        sudo -u renderer tirex-batch --prio=20 map=default z=${ZOOM_MIN}-${ZOOM_MAX} &
         PRERENDER_PID=$!
         
         # Wait for pre-rendering to complete (run in background)
         (
             wait $PRERENDER_PID
-            touch /data/database/prerender-complete
+            touch /data/prerender-complete
             echo "========================================"
             echo "Pre-rendering completed for zoom ${ZOOM_MIN}-${ZOOM_MAX}"
             echo "========================================"
@@ -311,8 +344,8 @@ if [ -n "${PRERENDER_ZOOMS:-}" ] && [ "${PRERENDER_ZOOMS:-}" != "disabled" ]; th
         echo "Pre-rendering started in background (PID: $PRERENDER_PID)"
         echo "Server will continue starting while pre-rendering runs in background"
     else
-        echo "Pre-rendering already completed (found /data/database/prerender-complete)"
-        echo "To re-run pre-rendering, delete /data/database/prerender-complete"
+        echo "Pre-rendering already completed (found /data/prerender-complete)"
+        echo "To re-run pre-rendering, delete /data/prerender-complete"
     fi
 fi
 
@@ -328,10 +361,10 @@ fi
 
 # Run while handling docker stop's SIGTERM
 stop_handler() {
-    kill -TERM "$RENDERD_PID"
+    kill -TERM "$TIREX_MASTER_PID" "$TIREX_BACKEND_PID"
 }
 trap stop_handler SIGTERM
 
-wait "$RENDERD_PID"
+wait "$TIREX_MASTER_PID"
 
 exit 0

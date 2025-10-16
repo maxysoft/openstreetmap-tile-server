@@ -20,8 +20,8 @@ DBNAME=${PGDATABASE:-gis}
 OSM2PGSQL_OPTIONS="-d $DBNAME -H ${PGHOST:-postgres} -P ${PGPORT:-5432} -U ${PGUSER:-renderer} -G --hstore --tag-transform-script /data/style/${NAME_LUA:-openstreetmap-carto.lua} --number-processes ${THREADS:-4} -S /data/style/${NAME_STYLE:-openstreetmap-carto.style} ${OSM2PGSQL_EXTRA_ARGS}"
 
 # flat-nodes
-if [ -f /data/database/flat_nodes.bin ]; then
-    OSM2PGSQL_OPTIONS="${OSM2PGSQL_OPTIONS} --flat-nodes /data/database/flat_nodes.bin"
+if [ -f /data/flat_nodes.bin ]; then
+    OSM2PGSQL_OPTIONS="${OSM2PGSQL_OPTIONS} --flat-nodes /data/flat_nodes.bin"
 fi
 
 #------------------------------------------------------------------------------
@@ -30,11 +30,11 @@ fi
 # See https://github.com/zverik/regional .
 # This area will usually correspond to the data originally loaded.
 #------------------------------------------------------------------------------
-TRIM_POLY_FILE="/data/database/region.poly"
+TRIM_POLY_FILE="/data/region.poly"
 TRIM_OPTIONS="-d $DBNAME -H ${PGHOST:-postgres} -p ${PGPORT:-5432} -U ${PGUSER:-renderer}"
 TRIM_REGION_OPTIONS="-p $TRIM_POLY_FILE"
 
-BASE_DIR=/data/database
+BASE_DIR=/data
 LOG_DIR=/var/log/tiles
 WORKOSM_DIR=$BASE_DIR/.osmosis
 
@@ -185,14 +185,43 @@ fi
 m_ok "expiring tiles"
 
 #------------------------------------------------------------------------------
-# Previously all tiles on the "dirty" list between $EXPIRY_MINZOOM and
-# $EXPIRY_MAXZOOM were dirtied.  We currently re-render
-# tiles >= $EXPIRY_MINZOOM and < $EXPIRY_DELETEFROM, expiry from 14 and
-# delete >= $EXPIRY_DELETEFROM and <= $EXPIRY_MAXZOOM.
-# The default path to renderd.sock is fixed.
+# With tirex we expire tiles using a different approach:
+# 1. For tiles that need to be dirtied/touched, we use a loop to delete them
+# 2. tirex will re-render on demand when tiles are requested
+# The expiry file format from osm2pgsql is: zoom/x/y
 #------------------------------------------------------------------------------
-if ! render_expired --map=default --min-zoom=$EXPIRY_MINZOOM --touch-from=$EXPIRY_TOUCHFROM --delete-from=$EXPIRY_DELETEFROM --max-zoom=$EXPIRY_MAXZOOM -s /run/renderd/renderd.sock < "$EXPIRY_FILE.$$" 2>&1 | tail -8 >> "$EXPIRYLOG"; then
-    m_info "Expiry failed"
+if [ -f "$EXPIRY_FILE.$$" ]; then
+    m_ok "Processing expired tiles"
+    
+    # Process each expired tile
+    while IFS=/ read -r z x y; do
+        # Skip invalid lines
+        if [ -z "$z" ] || [ -z "$x" ] || [ -z "$y" ]; then
+            continue
+        fi
+        
+        # Convert zoom to integer for comparison
+        zoom=$((z))
+        
+        # Touch tiles (mark as dirty) for EXPIRY_MINZOOM to EXPIRY_TOUCHFROM-1
+        if [ $zoom -ge $EXPIRY_MINZOOM ] && [ $zoom -lt $EXPIRY_DELETEFROM ]; then
+            tile_path="/var/cache/tirex/tiles/default/$z/$x/$y.png"
+            if [ -f "$tile_path" ]; then
+                # Mark as outdated by touching the file with old timestamp
+                touch -t 200001010000 "$tile_path" 2>/dev/null || true
+            fi
+        fi
+        
+        # Delete tiles for EXPIRY_DELETEFROM and above
+        if [ $zoom -ge $EXPIRY_DELETEFROM ] && [ $zoom -le $EXPIRY_MAXZOOM ]; then
+            tile_path="/var/cache/tirex/tiles/default/$z/$x/$y.png"
+            rm -f "$tile_path" 2>/dev/null || true
+        fi
+    done < "$EXPIRY_FILE.$$" 2>> "$EXPIRYLOG"
+    
+    m_ok "Expired tiles processed"
+else
+    m_info "No expiry file found"
 fi
 
 rm "$EXPIRY_FILE.$$"
