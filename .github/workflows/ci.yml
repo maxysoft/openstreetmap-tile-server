@@ -116,7 +116,7 @@ jobs:
           openstreetmap-tile-server:${{ github.sha }}
         
         echo "Waiting for import and server startup (takes ~3 minutes)..."
-        # Wait for container to complete import and fully start server (renderd + Apache)
+        # Wait for container to complete import and fully start server (tirex + Apache)
         # Check every 5 seconds to reduce log noise
         for i in {1..60}; do
           if ! docker ps | grep -q osm-www; then
@@ -125,12 +125,12 @@ jobs:
             exit 1
           fi
           
-          # Check if both renderd socket exists AND Apache is responding
-          if docker exec osm-www test -S /run/renderd/renderd.sock 2>/dev/null; then
-            # Give Apache a moment to finish starting after renderd
+          # Check if both tirex socket exists AND Apache is responding
+          if docker exec osm-www test -S /run/tirex/modtile.sock 2>/dev/null; then
+            # Give Apache a moment to finish starting after tirex
             sleep 5
             if docker exec osm-www pgrep -x apache2 > /dev/null 2>&1; then
-              echo "Server started successfully (renderd + Apache running)!"
+              echo "Server started successfully (tirex + Apache running)!"
               docker logs osm-www | tail -50
               break
             fi
@@ -154,9 +154,9 @@ jobs:
           exit 1
         fi
         
-        # Verify renderd socket exists (indicates successful startup)
-        docker exec osm-www test -S /run/renderd/renderd.sock || {
-          echo "ERROR: Renderd socket does not exist"
+        # Verify tirex socket exists (indicates successful startup)
+        docker exec osm-www test -S /run/tirex/modtile.sock || {
+          echo "ERROR: Tirex socket does not exist"
           docker logs osm-www
           exit 1
         }
@@ -168,7 +168,7 @@ jobs:
           exit 1
         }
         
-        echo "SUCCESS: Server is running with renderd and Apache"
+        echo "SUCCESS: Server is running with tirex and Apache"
         
         # Wait for Apache to be ready to accept connections
         echo "Waiting for Apache to accept connections..."
