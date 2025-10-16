@@ -54,6 +54,8 @@ ENV MAPNIK_INPUT_PLUGINS_DIRECTORY=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # Install Node.js 22.x LTS from NodeSource and get packages in a single layer
+# Note: libmapnik4.0 is required for Mapnik input plugins (postgis, shape, etc.)
+# Installing only mapnik-utils and python3-mapnik is not sufficient
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 && apt-get update \
 && apt-get install -y --no-install-recommends \
@@ -68,6 +70,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
  gnupg2 \
  gdal-bin \
  liblua5.3-dev \
+ libmapnik4.0 \
  lua5.3 \
  mapnik-utils \
  nodejs \
@@ -150,6 +153,8 @@ RUN mkdir -p /run/renderd/ \
   &&  ln  -s  /data/tiles              /var/cache/renderd/tiles                \
 ;
 
+# Configure renderd with tile settings and correct paths
+# Update plugins_dir to point to Mapnik 4.0 input plugins location
 RUN echo '[default] \n\
 URI=/tile/ \n\
 TILEDIR=/var/cache/renderd/tiles \n\
@@ -158,7 +163,7 @@ HOST=localhost \n\
 TILESIZE=256 \n\
 MAXZOOM=20' >> /etc/renderd.conf \
  && sed -i 's,/usr/share/fonts/truetype,/usr/share/fonts,g' /etc/renderd.conf \
- && sed -i 's,plugins_dir=/usr/lib/mapnik/3.1/input,plugins_dir=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input,g' /etc/renderd.conf
+ && sed -i 's,plugins_dir=/usr/lib/mapnik/[0-9.]\+/input,plugins_dir=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input,g' /etc/renderd.conf
 
 # Install helper script
 COPY --from=compiler-helper-script /home/renderer/src/regional /home/renderer/src/regional
