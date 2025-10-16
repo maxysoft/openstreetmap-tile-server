@@ -73,8 +73,9 @@ services:
       # Debug mode
       # DEBUG_MODE: disabled  # Set to "enabled" or "1" to enable bash debug mode
     volumes:
-      - osm-tiles:/data/tiles/
-      - osm-flatnodes:/data/osm-flatnodes/  # Required when FLAT_NODES=enabled
+      # Single volume mount for all persistent data (recommended)
+      # This includes tiles, style, region files, import/prerender markers, and flat nodes
+      - osm-tiles:/data/
     ports:
       - "8080:80"
     depends_on:
@@ -91,4 +92,3 @@ networks:
 volumes:
   osm-data:
   osm-tiles:
-  osm-flatnodes:
