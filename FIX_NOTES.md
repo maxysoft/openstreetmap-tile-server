@@ -79,10 +79,16 @@ Expected results after deploying this fix:
 
 ## Files Changed
 
-- `Dockerfile`: Fixed renderd.conf configuration to use correct Mapnik plugins directory path `/usr/lib/x86_64-linux-gnu/mapnik/input` instead of incorrect `/usr/lib/x86_64-linux-gnu/mapnik/4.0/input`
-- `Dockerfile`: Updated `MAPNIK_INPUT_PLUGINS_DIRECTORY` environment variable to use correct path
+- `Dockerfile`: Downgraded openstreetmap-carto from v5.9.0 to v5.8.0 for better compatibility with Debian Trixie/renderd 0.8.0
 - `FIX_NOTES.md`: Updated documentation to reflect the actual root cause and solution
 
-## Version-Specific Path Issue
+## Version Compatibility Issue
 
-The initial fix incorrectly assumed Mapnik 4.0 plugins would be in a versioned subdirectory (`4.0/input`), but Debian's libmapnik4.0 package installs plugins directly in `/usr/lib/x86_64-linux-gnu/mapnik/input/` without version subdirectory.
+After extensive investigation, the root cause was determined to be a compatibility issue between:
+- renderd 0.8.0 (Debian Trixie)
+- openstreetmap-carto v5.9.0  
+- Mapnik 4.0.6
+
+Despite the Mapnik plugins being correctly installed and the paths configured properly in renderd.conf, renderd 0.8.0 was failing to properly register the Mapnik datasources when using openstreetmap-carto v5.9.0.
+
+The solution is to downgrade to openstreetmap-carto v5.8.0, which is known to be more stable with the current Debian Trixie package versions.
