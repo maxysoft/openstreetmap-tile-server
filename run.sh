@@ -261,17 +261,28 @@ sed -i -E "s/^procs=.*/procs=${THREADS:-4}/g" /etc/tirex/renderer/mapnik.conf
 mkdir -p /run/tirex /var/cache/tirex/stats
 chown -R renderer: /run/tirex /var/cache/tirex
 
-# Start tirex-master first
+# Start tirex-master first (in foreground mode with -f flag)
 echo "Starting tirex-master..."
-sudo -u renderer tirex-master &
+sudo -u renderer tirex-master -f &
 TIREX_MASTER_PID=$!
 
-# Wait for tirex-master to be ready
-sleep 2
+# Wait for tirex-master to be ready and create its socket
+echo "Waiting for tirex-master socket..."
+for i in {1..30}; do
+    if [ -S /run/tirex/master.sock ]; then
+        echo "Tirex-master socket is ready!"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo "ERROR: Tirex-master socket not created after 30 seconds"
+        exit 1
+    fi
+    sleep 1
+done
 
-# Start tirex-backend-manager
+# Start tirex-backend-manager (in foreground mode with -f flag)
 echo "Starting tirex-backend-manager..."
-sudo -u renderer tirex-backend-manager &
+sudo -u renderer tirex-backend-manager -f &
 TIREX_BACKEND_PID=$!
 
 # Wait for tirex socket to be created
