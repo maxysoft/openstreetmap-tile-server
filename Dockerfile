@@ -68,6 +68,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
  gnupg2 \
  gdal-bin \
  liblua5.3-dev \
+ libmapnik4.0 \
  lua5.3 \
  mapnik-utils \
  nodejs \
