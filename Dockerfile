@@ -49,13 +49,12 @@ ENV AUTOVACUUM=on
 ENV UPDATES=disabled
 ENV REPLICATION_URL=https://planet.openstreetmap.org/replication/hour/
 ENV MAX_INTERVAL_SECONDS=3600
-ENV MAPNIK_INPUT_PLUGINS_DIRECTORY=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input
 
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # Install Node.js 22.x LTS from NodeSource and get packages in a single layer
-# Note: libmapnik4.0 is required for Mapnik input plugins (postgis, shape, etc.)
-# Installing only mapnik-utils and python3-mapnik is not sufficient
+# Note: tirex pulls in the correct libmapnik version as a dependency
+# Installing tirex will install libmapnik3.1 on Debian Trixie
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 && apt-get update \
 && apt-get install -y --no-install-recommends \
@@ -70,7 +69,6 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
  gnupg2 \
  gdal-bin \
  liblua5.3-dev \
- libmapnik4.0 \
  lua5.3 \
  mapnik-utils \
  nodejs \
@@ -128,7 +126,6 @@ COPY openstreetmap-tiles-update-expire.sh /usr/bin/
 RUN chmod +x /usr/bin/openstreetmap-tiles-update-expire.sh \
 && mkdir /var/log/tiles \
 && chmod a+rw /var/log/tiles \
-&& ln -s /home/renderer/src/mod_tile/osmosis-db_replag /usr/bin/osmosis-db_replag \
 && echo "* * * * *   renderer    openstreetmap-tiles-update-expire.sh\n" >> /etc/crontab
 
 # Configure environment variables for external PostGIS connection
@@ -162,8 +159,10 @@ RUN sed -i 's|^modtile_socket_name=.*|modtile_socket_name=/run/tirex/modtile.soc
  && sed -i 's|^master_pidfile=.*|master_pidfile=/run/tirex/tirex-master.pid|' /etc/tirex/tirex.conf \
  && sed -i 's|^backend_manager_pidfile=.*|backend_manager_pidfile=/run/tirex/tirex-backend-manager.pid|' /etc/tirex/tirex.conf
 
-# Configure mapnik renderer for tirex with Mapnik 4.0 paths
-RUN sed -i 's|^plugindir=.*|plugindir=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input|' /etc/tirex/renderer/mapnik.conf \
+# Configure mapnik renderer for tirex
+# Note: Mapnik plugin directory varies by version (3.1 vs 4.0)
+# Tirex in Debian Trixie uses Mapnik 3.1, so we use the 3.1 path
+RUN sed -i 's|^plugindir=.*|plugindir=/usr/lib/mapnik/3.1/input|' /etc/tirex/renderer/mapnik.conf \
  && sed -i 's|^fontdir=.*|fontdir=/usr/share/fonts|' /etc/tirex/renderer/mapnik.conf \
  && sed -i 's|^procs=.*|procs=4|' /etc/tirex/renderer/mapnik.conf
 
