@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-# Disable bash debug mode if requested
-if [ "${DISABLE_DEBUG_MODE:-}" != "1" ] && [ "${DISABLE_DEBUG_MODE:-}" != "enabled" ]; then
+# Enable bash debug mode if requested
+if [ "${DEBUG_MODE:-}" == "1" ] || [ "${DEBUG_MODE:-}" == "enabled" ]; then
     set -x
 fi
 

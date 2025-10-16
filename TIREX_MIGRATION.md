@@ -61,21 +61,21 @@ Tirex on Debian Trixie uses Mapnik 3.1 instead of Mapnik 4.0. The plugin directo
 
 ## New Features
 
-### DISABLE_DEBUG_MODE Environment Variable
+### DEBUG_MODE Environment Variable
 
 A new environment variable has been added to control bash debug output:
 
 ```bash
-# Enable debug mode (default)
+# Debug mode disabled (default)
 docker run ... overv/openstreetmap-tile-server
 
-# Disable debug mode
-docker run -e DISABLE_DEBUG_MODE=1 ... overv/openstreetmap-tile-server
+# Enable debug mode
+docker run -e DEBUG_MODE=1 ... overv/openstreetmap-tile-server
 # or
-docker run -e DISABLE_DEBUG_MODE=enabled ... overv/openstreetmap-tile-server
+docker run -e DEBUG_MODE=enabled ... overv/openstreetmap-tile-server
 ```
 
-When debug mode is disabled, the container logs are less verbose and don't show every executed command.
+When debug mode is enabled, the container logs show all executed commands (`set -x`), which is helpful for debugging.
 
 ## Configuration Details
 
@@ -202,7 +202,7 @@ This sets the `procs` parameter in `/etc/tirex/renderer/mapnik.conf`.
 - [x] Update Apache configuration
 - [x] Migrate pre-rendering to tirex-batch
 - [x] Update tile expiry logic
-- [x] Add DISABLE_DEBUG_MODE support
+- [x] Add DEBUG_MODE support
 - [x] Update documentation
 - [x] Test Docker build
 - [x] Verify configuration files

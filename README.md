@@ -249,14 +249,14 @@ The default password is `renderer`, but it can be changed by setting the `POSTGR
 
 Details for update procedure and invoked scripts can be found here [link](https://ircama.github.io/osm-carto-tutorials/updating-data/).
 
-### DISABLE_DEBUG_MODE
+### DEBUG_MODE
 
-By default, the container runs with bash debug mode enabled (`set -x`), which shows all executed commands in the logs. This can be helpful for debugging but may be verbose for production use. You can disable debug mode by setting the `DISABLE_DEBUG_MODE` environment variable to `1` or `enabled`:
+By default, the container runs without bash debug mode. You can enable debug mode by setting the `DEBUG_MODE` environment variable to `1` or `enabled`, which will show all executed commands in the logs (`set -x`). This can be helpful for debugging but may be verbose for production use:
 
 ```
 docker run \
     -p 8080:80 \
-    -e DISABLE_DEBUG_MODE=1 \
+    -e DEBUG_MODE=1 \
     -v osm-tiles:/data/tiles/ \
     --link postgres:postgres \
     -e PGHOST=postgres \
@@ -364,7 +364,7 @@ The tile server has been migrated from `renderd` to `tirex` for better compatibi
   - Pre-rendering now uses `tirex-batch` instead of `render_list`
   - Tile expiry uses custom logic compatible with tirex
 - **New Features**:
-  - Added `DISABLE_DEBUG_MODE` environment variable to control bash debug output
+  - Added `DEBUG_MODE` environment variable to enable bash debug output
   - Improved tile caching configuration in Apache
   - Better separation between master and backend rendering processes
 - **Benefits**:
