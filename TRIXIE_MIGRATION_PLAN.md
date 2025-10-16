@@ -167,6 +167,7 @@ The migration to Debian Trixie has been successfully completed with the followin
 - [x] Docker build completes successfully
 - [x] Node.js and npm versions verified
 - [x] All packages install correctly
+- [x] Mapnik PostGIS plugin configuration fixed (renderd.conf)
 - [ ] Full CI tests (pending PR merge)
 - [ ] Tile rendering validation (pending deployment)
 
@@ -175,6 +176,7 @@ The migration to Debian Trixie has been successfully completed with the followin
 - All font packages available in Debian repositories
 - Python 3.13 enforces PEP 668, resolved by using Debian native packages
 - CI workflow updated to handle new base image tag format
+- Fixed renderd.conf to properly configure Mapnik 4.0 plugins_dir (see FIX_NOTES.md)
 
 ## References
 - Debian Trixie Release Info: https://www.debian.org/releases/trixie/
