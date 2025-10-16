@@ -54,6 +54,8 @@ ENV MAPNIK_INPUT_PLUGINS_DIRECTORY=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # Install Node.js 22.x LTS from NodeSource and get packages in a single layer
+# Note: libmapnik4.0 is required for Mapnik input plugins (postgis, shape, etc.)
+# Installing only mapnik-utils and python3-mapnik is not sufficient
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 && apt-get update \
 && apt-get install -y --no-install-recommends \
@@ -151,6 +153,8 @@ RUN mkdir -p /run/renderd/ \
   &&  ln  -s  /data/tiles              /var/cache/renderd/tiles                \
 ;
 
+# Configure renderd with tile settings and correct paths
+# Update plugins_dir to point to Mapnik 4.0 input plugins location
 RUN echo '[default] \n\
 URI=/tile/ \n\
 TILEDIR=/var/cache/renderd/tiles \n\
