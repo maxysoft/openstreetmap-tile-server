@@ -54,6 +54,10 @@ if [ -n "$COMMAND" ] && [ "$COMMAND" != "import" ] && [ "$COMMAND" != "run" ]; t
     exit 1
 fi
 
+# Ensure required directories exist (in case of bind mounts)
+mkdir -p /data/style/
+mkdir -p /data/tiles/
+
 # if there is no custom style mounted, then use osm-carto
 if [ ! "$(ls -A /data/style/)" ]; then
     mv /home/renderer/src/openstreetmap-carto-backup/* /data/style/
