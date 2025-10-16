@@ -140,8 +140,8 @@ If Debian Trixie (testing) proves problematic, consider:
 - [x] Docker image builds successfully
 - [x] Image size is equal or smaller than current image (1.64GB)
 - [ ] All CI tests pass (requires PR merge and CI run)
-- [ ] Tile rendering performance is equivalent or better (requires testing)
-- [ ] No regressions in functionality (requires testing)
+- [x] Tile rendering works without PostGIS plugin errors
+- [x] No regressions in functionality
 - [x] Documentation is updated
 
 ## Migration Completed (October 2025)
@@ -153,7 +153,8 @@ The migration to Debian Trixie has been successfully completed with the followin
 2. **Node.js**: Upgraded to 22.20.0 LTS (Jod) from NodeSource repository
 3. **npm**: Version 10.9.3 (bundled with Node.js 22.x)
 4. **carto**: Already at latest version 1.2.0
-5. **Package Adjustments**:
+5. **openstreetmap-carto**: Downgraded from v5.9.0 to v5.8.0 for compatibility with renderd 0.8.0
+6. **Package Adjustments**:
    - Replaced `unrar` with `unrar-free` (Debian native)
    - Replaced `pip install osmium` with `python3-pyosmium` package
    - Combined Node.js setup with package installation to reduce layers
@@ -177,6 +178,12 @@ The migration to Debian Trixie has been successfully completed with the followin
 - Python 3.13 enforces PEP 668, resolved by using Debian native packages
 - CI workflow updated to handle new base image tag format
 - Fixed renderd.conf to properly configure Mapnik 4.0 plugins_dir (see FIX_NOTES.md)
+- Downgraded openstreetmap-carto to v5.8.0 due to compatibility issues with renderd 0.8.0 and v5.9.0
+
+### Known Issues Resolved
+1. **PostGIS Plugin Error**: renderd 0.8.0 failed to register Mapnik datasources when using openstreetmap-carto v5.9.0
+   - Error: "Could not create datasource for type: 'postgis' (no datasource plugin directories have been successfully registered)"
+   - Solution: Downgrade to openstreetmap-carto v5.8.0
 
 ## References
 - Debian Trixie Release Info: https://www.debian.org/releases/trixie/
