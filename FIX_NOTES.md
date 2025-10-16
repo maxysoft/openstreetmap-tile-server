@@ -12,53 +12,72 @@ This error occurred during renderd startup and prevented the map layer from load
 
 ## Root Cause
 
-The issue was caused by missing Mapnik input plugins. While the Dockerfile installed `mapnik-utils` and `python3-mapnik`, these packages only provide:
-- `mapnik-utils`: Command-line utilities for Mapnik
-- `python3-mapnik`: Python bindings for Mapnik
+The issue had two components:
 
-Neither of these packages includes the actual Mapnik library or its input plugins (postgis, shape, gdal, etc.).
+1. **Missing Mapnik Library**: While the Dockerfile installed `mapnik-utils` and `python3-mapnik`, these packages only provide:
+   - `mapnik-utils`: Command-line utilities for Mapnik
+   - `python3-mapnik`: Python bindings for Mapnik
 
-In Debian/Ubuntu, the Mapnik input plugins are part of the core library package `libmapnik4.0`, which must be explicitly installed.
+   Neither of these packages includes the actual Mapnik library or its input plugins (postgis, shape, gdal, etc.).
+   In Debian/Ubuntu, the Mapnik input plugins are part of the core library package `libmapnik4.0`.
+
+2. **Incorrect renderd.conf Configuration**: The Dockerfile was attempting to append a new `[mapnik]` section to renderd.conf, but the default renderd.conf from the package already contained a `[mapnik]` section with `plugins_dir=/usr/lib/mapnik/3.1/input`. This resulted in duplicate sections, and the first (incorrect) one was being used.
 
 ## Solution
 
-Added `libmapnik4.0` to the list of installed packages in the Dockerfile. This package contains:
-- The Mapnik core library
-- All input plugins including:
-  - PostGIS datasource plugin
-  - Shapefile plugin
-  - GDAL plugin
-  - Other datasource plugins
+1. **Added `libmapnik4.0` package**: This package contains:
+   - The Mapnik core library
+   - All input plugins including:
+     - PostGIS datasource plugin (`postgis.input`)
+     - Shapefile plugin (`shape.input`)
+     - GDAL plugin (`gdal.input`)
+     - Other datasource plugins
+
+2. **Fixed renderd.conf configuration**: Changed from appending a duplicate `[mapnik]` section to properly updating the existing one using sed:
+   ```bash
+   # Before (incorrect - created duplicate [mapnik] section):
+   echo '[mapnik] \n plugins_dir=...' >> /etc/renderd.conf
+   
+   # After (correct - updates existing [mapnik] section):
+   sed -i 's,plugins_dir=/usr/lib/mapnik/[0-9.]\+/input,plugins_dir=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input,g' /etc/renderd.conf
+   ```
 
 ## Additional Improvements
 
-1. **Improved plugins_dir pattern matching**: Changed the sed command from:
-   ```bash
-   sed -i 's,plugins_dir=/usr/lib/mapnik/3.1/input,...'
-   ```
-   to:
-   ```bash
-   sed -i 's,plugins_dir=/usr/lib/mapnik/[0-9.]\+/input,...'
-   ```
-   This makes the pattern match any Mapnik version (3.0, 3.1, 4.0, etc.), making the configuration more robust.
+1. **Improved plugins_dir pattern matching**: The sed command uses a regex pattern `[0-9.]\+` to match any Mapnik version (3.0, 3.1, 4.0, etc.), making the configuration more robust across version changes.
 
-2. **Fixed typo in README**: Corrected `FLAT_NOTES` to `FLAT_NODES` in the warning about using flat nodes with updates.
+2. **Font directory correction**: Updated font_dir from `/usr/share/fonts/truetype` to `/usr/share/fonts` to include all font subdirectories.
 
-3. **Added documentation**: Added comments explaining why `libmapnik4.0` is required and what the plugins_dir configuration does.
+## Impact on Preloading
 
-## FLAT_NODES Issue
+The PostGIS plugin error directly prevented the tile preloading functionality from working. From the logs:
 
-The issue title mentioned "FLAT_NODES: enabled doesn't work too", but based on the logs provided, FLAT_NODES was set to "disabled" and the functionality is working as expected. The environment variable handling for FLAT_NODES is correct in the code. Users who want to enable flat nodes should set `FLAT_NODES=enabled` in their environment variables.
+```
+** Message: 10:02:44.265: Rendering all tiles for zoom 0 to zoom 12
+** (process:30): ERROR **: 10:02:44.265: Received request for map layer 'default' which failed to load
+```
 
-## Testing
+The `render_list` command would start but immediately fail because the map layer couldn't load due to the missing PostGIS plugin. With the fix:
+- Renderd can successfully load the map layer
+- The PostGIS datasource plugin is registered and functional
+- Tile preloading (`render_list`) can successfully render tiles
+- The `PRERENDER_ZOOMS` environment variable works as intended
 
-To verify the fix:
-1. Build the Docker image with the updated Dockerfile
-2. Start the tile server with an external PostGIS database
-3. Check renderd logs - the PostGIS datasource plugin error should no longer appear
-4. Verify tiles can be rendered successfully
+## Verification
+
+The fix has been verified by:
+1. Building the Docker image with the updated Dockerfile
+2. Checking that renderd.conf has the correct plugins_dir path
+3. Verifying that the postgis.input plugin exists at the configured path
+4. Confirming that MAPNIK_INPUT_PLUGINS_DIRECTORY environment variable is set correctly
+
+Expected results after deploying this fix:
+- No more "Could not create datasource" errors in renderd logs
+- Tiles can be rendered successfully
+- Preloading functionality works correctly
+- Database connection to external PostgreSQL works properly
 
 ## Files Changed
 
-- `Dockerfile`: Added `libmapnik4.0` package and improved plugins_dir pattern
-- `README.md`: Fixed FLAT_NOTES typo to FLAT_NODES
+- `Dockerfile`: Fixed renderd.conf configuration to properly update the existing [mapnik] section instead of creating a duplicate
+- `FIX_NOTES.md`: Updated documentation to reflect the actual root cause and solution
