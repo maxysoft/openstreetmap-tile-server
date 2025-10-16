@@ -155,15 +155,18 @@ RUN mkdir -p /run/renderd/ \
 
 # Configure renderd with tile settings and correct paths
 # Update plugins_dir to point to Mapnik 4.0 input plugins location
-RUN echo '[default] \n\
+RUN echo '[mapnik] \n\
+plugins_dir=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input \n\
+font_dir=/usr/share/fonts \n\
+font_dir_recurse=true \n\
+\n\
+[default] \n\
 URI=/tile/ \n\
 TILEDIR=/var/cache/renderd/tiles \n\
 XML=/home/renderer/src/openstreetmap-carto/mapnik.xml \n\
 HOST=localhost \n\
 TILESIZE=256 \n\
-MAXZOOM=20' >> /etc/renderd.conf \
- && sed -i 's,/usr/share/fonts/truetype,/usr/share/fonts,g' /etc/renderd.conf \
- && sed -i 's,plugins_dir=/usr/lib/mapnik/[0-9.]\+/input,plugins_dir=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input,g' /etc/renderd.conf
+MAXZOOM=20' >> /etc/renderd.conf
 
 # Install helper script
 COPY --from=compiler-helper-script /home/renderer/src/regional /home/renderer/src/regional
