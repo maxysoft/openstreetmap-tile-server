@@ -54,9 +54,9 @@ Apache (mod_tile) → tirex socket → tirex-master → tirex-backend-manager �
 
 ## Mapnik Version
 
-Tirex on Debian Trixie uses Mapnik 3.1 instead of Mapnik 4.0. The plugin directory has been updated accordingly:
+Tirex on Debian Trixie uses Mapnik 4.0. The plugin directory is architecture-specific:
 
-- **Mapnik Plugin Directory**: `/usr/lib/mapnik/3.1/input`
+- **Mapnik Plugin Directory**: `/usr/lib/x86_64-linux-gnu/mapnik/4.0/input`
 - **Font Directory**: `/usr/share/fonts`
 
 ## New Features
@@ -89,7 +89,7 @@ Key settings:
 ### Mapnik Renderer Configuration (`/etc/tirex/renderer/mapnik.conf`)
 
 Key settings:
-- Plugin directory: `/usr/lib/mapnik/3.1/input`
+- Plugin directory: `/usr/lib/x86_64-linux-gnu/mapnik/4.0/input`
 - Font directory: `/usr/share/fonts`
 - Number of processes: Configurable via `THREADS` environment variable (default: 4)
 
@@ -127,8 +127,10 @@ Pre-rendering now uses `tirex-batch` instead of `render_list`:
 render_list -a -z 0 -Z 12 -n 4
 
 # New command
-tirex-batch --prio=20 map=default z=0-12
+tirex-batch --prio=20 map=default bbox=-180,-90,180,90 z=0-12
 ```
+
+Note: `tirex-batch` requires a bounding box parameter. Use world bbox (-180,-90,180,90) for full world coverage.
 
 The `PRERENDER_ZOOMS` environment variable still works the same way.
 
@@ -175,12 +177,12 @@ If you see errors about missing plugins or fonts:
 
 1. Verify Mapnik plugin directory:
    ```bash
-   ls -la /usr/lib/mapnik/3.1/input
+   ls -la /usr/lib/x86_64-linux-gnu/mapnik/4.0/input
    ```
 
 2. Check if PostGIS plugin exists:
    ```bash
-   ls -la /usr/lib/mapnik/3.1/input/postgis.input
+   ls -la /usr/lib/x86_64-linux-gnu/mapnik/4.0/input/postgis.input
    ```
 
 ## Performance Tuning

@@ -18,7 +18,7 @@ RUN apt-get update \
 
 FROM compiler-common AS compiler-stylesheet
 RUN cd ~ \
-&& git clone --single-branch --branch v5.8.0 https://github.com/gravitystorm/openstreetmap-carto.git --depth 1 \
+&& git clone --single-branch --branch v5.9.0 https://github.com/gravitystorm/openstreetmap-carto.git --depth 1 \
 && cd openstreetmap-carto \
 && sed -i 's/, "unifont Medium", "Unifont Upper Medium"//g' style/fonts.mss \
 && sed -i 's/"Noto Sans Tibetan Regular",//g' style/fonts.mss \
@@ -159,7 +159,7 @@ RUN sed -i 's|^modtile_socket_name=.*|modtile_socket_name=/run/tirex/modtile.soc
  && sed -i 's|^backend_manager_pidfile=.*|backend_manager_pidfile=/run/tirex/tirex-backend-manager.pid|' /etc/tirex/tirex.conf
 
 # Configure mapnik renderer for tirex
-# Note: Debian Trixie actually has Mapnik 4.0 available
+# Note: Debian Trixie has Mapnik 4.0 with plugins in /usr/lib/x86_64-linux-gnu/mapnik/4.0/input
 RUN sed -i 's|^plugindir=.*|plugindir=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input|' /etc/tirex/renderer/mapnik.conf \
  && sed -i 's|^fontdir=.*|fontdir=/usr/share/fonts|' /etc/tirex/renderer/mapnik.conf \
  && sed -i 's|^procs=.*|procs=4|' /etc/tirex/renderer/mapnik.conf
