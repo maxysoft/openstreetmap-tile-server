@@ -66,7 +66,21 @@ fi
 
 # carto build
 if [ ! -f /data/style/mapnik.xml ]; then
+    echo "========================================"
+    echo "Generating mapnik.xml from project.mml..."
+    echo "========================================"
     cd /data/style/
+    
+    # Verify that project.mml exists
+    if [ ! -f ${NAME_MML:-project.mml} ]; then
+        echo "ERROR: ${NAME_MML:-project.mml} not found in /data/style/"
+        echo "Cannot generate mapnik.xml without a valid MML file."
+        echo "Available files in /data/style/:"
+        ls -la /data/style/
+        exit 1
+    fi
+    
+    echo "Found ${NAME_MML:-project.mml}, configuring database connection..."
     
     # Configure PostgreSQL connection parameters in project.mml
     if [ -f ${NAME_MML:-project.mml} ]; then
@@ -86,7 +100,26 @@ if [ ! -f /data/style/mapnik.xml ]; then
         fi
     fi
     
-    carto ${NAME_MML:-project.mml} > mapnik.xml
+    echo "Running carto to generate mapnik.xml..."
+    if ! carto ${NAME_MML:-project.mml} > mapnik.xml; then
+        echo "ERROR: Failed to generate mapnik.xml with carto"
+        echo "Carto command failed. Please check the error message above."
+        exit 1
+    fi
+    
+    # Verify that mapnik.xml was created and is not empty
+    if [ ! -f mapnik.xml ]; then
+        echo "ERROR: mapnik.xml was not created"
+        exit 1
+    fi
+    
+    if [ ! -s mapnik.xml ]; then
+        echo "ERROR: mapnik.xml is empty"
+        exit 1
+    fi
+    
+    echo "Successfully generated mapnik.xml ($(stat -c%s mapnik.xml) bytes)"
+    echo "========================================"
 fi
 
 # Function to perform the import process
