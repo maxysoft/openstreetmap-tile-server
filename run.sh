@@ -122,6 +122,15 @@ if [ ! -f /data/style/mapnik.xml ]; then
     echo "========================================"
 fi
 
+# Verify mapnik.xml is accessible via the symlink path that tirex uses
+if [ ! -f /home/renderer/src/openstreetmap-carto/mapnik.xml ]; then
+    echo "ERROR: mapnik.xml not found at /home/renderer/src/openstreetmap-carto/mapnik.xml"
+    echo "Tirex configuration expects mapnik.xml at this location"
+    echo "Checking symlink status..."
+    ls -la /home/renderer/src/openstreetmap-carto || true
+    exit 1
+fi
+
 # Function to perform the import process
 function performImport() {
     echo "========================================"
