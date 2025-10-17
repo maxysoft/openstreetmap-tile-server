@@ -324,6 +324,29 @@ docker run \
 
 The PostgreSQL database has the autovacuum feature enabled by default. You can configure this in the PostGIS container by setting appropriate PostgreSQL configuration parameters. See the [PostGIS documentation](https://hub.docker.com/r/postgis/postgis) for details.
 
+### PRERENDER_BBOX
+
+When pre-rendering tiles with `PRERENDER_ZOOMS`, you can specify a custom bounding box to limit pre-rendering to a specific geographic region. This significantly reduces rendering time and disk space usage.
+
+The bbox format is: `lon_min,lat_min,lon_max,lat_max`
+
+Example for Italy:
+```
+docker run \
+    -p 8080:80 \
+    -e DOWNLOAD_PBF=https://download.geofabrik.de/europe/italy-latest.osm.pbf \
+    -e PRERENDER_ZOOMS=0-12 \
+    -e PRERENDER_BBOX=6.6,35.5,18.5,47.1 \
+    -v osm-tiles:/data/tiles/ \
+    --link postgres:postgres \
+    -e PGHOST=postgres \
+    -d overv/openstreetmap-tile-server
+```
+
+If not specified, defaults to world bbox: `-180,-90,180,90`
+
+See [PRERENDER_BBOX_EXAMPLES.md](PRERENDER_BBOX_EXAMPLES.md) for bounding boxes of common regions including Italy, Europe, and other countries.
+
 ### FLAT_NODES
 
 If you are planning to import the entire planet or you are running into memory errors then you may want to enable the `--flat-nodes` option for osm2pgsql. You can then use it during the import process as follows:

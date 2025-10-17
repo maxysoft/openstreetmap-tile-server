@@ -61,6 +61,8 @@ services:
       THREADS: 4              # Set to ~75% of CPU cores (e.g., 12 for 16-core system)
       FLAT_NODES: disabled    # Enable for datasets >1GB (requires additional disk space)
       PRERENDER_ZOOMS: 0-12   # Pre-render zoom levels (e.g., "0-12" or "disabled")
+      # PRERENDER_BBOX: 6.6,35.5,18.5,47.1  # Bounding box for pre-rendering (default: world bbox)
+                              # Examples: Italy: "6.6,35.5,18.5,47.1", Europe: "-10,35,40,70"
       
       # Updates configuration
       # UPDATES: disabled     # Set to "enabled" to enable automatic updates

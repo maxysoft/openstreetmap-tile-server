@@ -51,6 +51,7 @@ if [ -n "$COMMAND" ] && [ "$COMMAND" != "import" ] && [ "$COMMAND" != "run" ]; t
     echo "    NAME_STYLE: name of the .style to use"
     echo "    NAME_MML: name of the .mml file to render to mapnik.xml"
     echo "    NAME_SQL: name of the .sql file to use"
+    echo "    PRERENDER_BBOX: bounding box for pre-rendering (default: -180,-90,180,90 for world)"
     exit 1
 fi
 
@@ -332,8 +333,11 @@ if [ -n "${PRERENDER_ZOOMS:-}" ] && [ "${PRERENDER_ZOOMS:-}" != "disabled" ]; th
         ZOOM_MAX=$(echo "${PRERENDER_ZOOMS}" | cut -d'-' -f2)
         
         # Run tirex-batch in background to avoid blocking startup
-        # tirex-batch requires bbox parameter: use world bbox for full coverage
-        sudo -u renderer tirex-batch --prio=20 map=default bbox=-180,-90,180,90 z=${ZOOM_MIN}-${ZOOM_MAX} &
+        # tirex-batch requires bbox parameter. Use PRERENDER_BBOX or default to world bbox
+        # Bbox format: lon_min,lat_min,lon_max,lat_max (e.g., "6.6,35.5,18.5,47.1" for Italy)
+        BBOX="${PRERENDER_BBOX:--180,-90,180,90}"
+        echo "Pre-rendering bounding box: ${BBOX}"
+        sudo -u renderer tirex-batch --prio=20 map=default bbox=${BBOX} z=${ZOOM_MIN}-${ZOOM_MAX} &
         PRERENDER_PID=$!
         
         # Wait for pre-rendering to complete (run in background)
