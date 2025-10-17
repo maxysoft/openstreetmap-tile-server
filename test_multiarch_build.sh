@@ -13,15 +13,22 @@ echo ""
 # Test 1: Verify architecture detection works
 echo "Test 1: Architecture Detection"
 echo "Current system:"
-CURRENT_ARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH)
-echo "  Architecture: $CURRENT_ARCH"
-echo "  Plugin path: /usr/lib/${CURRENT_ARCH}/mapnik/4.0/input"
+CURRENT_ARCH=$(dpkg --print-architecture)
+case "$CURRENT_ARCH" in
+  amd64) ARCH_TUPLE="x86_64-linux-gnu" ;;
+  arm64) ARCH_TUPLE="aarch64-linux-gnu" ;;
+  armhf) ARCH_TUPLE="arm-linux-gnueabihf" ;;
+  i386) ARCH_TUPLE="i386-linux-gnu" ;;
+  *) ARCH_TUPLE="${CURRENT_ARCH}-linux-gnu" ;;
+esac
+echo "  Architecture: $CURRENT_ARCH -> $ARCH_TUPLE"
+echo "  Plugin path: /usr/lib/${ARCH_TUPLE}/mapnik/4.0/input"
 echo "✓ PASS: Architecture detection works"
 echo ""
 
 # Test 2: Verify Dockerfile has correct syntax
 echo "Test 2: Dockerfile Syntax Check"
-if grep -q 'ARCH_TUPLE=$(dpkg-architecture -qDEB_HOST_MULTIARCH)' Dockerfile; then
+if grep -q 'ARCH=$(dpkg --print-architecture)' Dockerfile; then
     echo "✓ PASS: Dockerfile contains architecture detection"
 else
     echo "✗ FAIL: Dockerfile missing architecture detection"
@@ -79,7 +86,7 @@ echo ""
 # Test 5: Verify verification script is architecture-aware
 echo "Test 5: Verification Script"
 if [ -f verify_fixes.sh ]; then
-    if grep -q 'dpkg-architecture -qDEB_HOST_MULTIARCH' verify_fixes.sh; then
+    if grep -q 'dpkg --print-architecture' verify_fixes.sh; then
         echo "✓ PASS: verify_fixes.sh uses dynamic architecture detection"
     else
         echo "✗ FAIL: verify_fixes.sh has hardcoded architecture"

@@ -15,7 +15,14 @@ echo ""
 
 # Test 1: Verify Mapnik plugin directory exists
 echo "Test 1: Checking Mapnik plugin directory..."
-ARCH_TUPLE=$(docker run --rm --entrypoint bash "$IMAGE_NAME" -c "dpkg-architecture -qDEB_HOST_MULTIARCH")
+ARCH=$(docker run --rm --entrypoint bash "$IMAGE_NAME" -c "dpkg --print-architecture")
+case "$ARCH" in
+  amd64) ARCH_TUPLE="x86_64-linux-gnu" ;;
+  arm64) ARCH_TUPLE="aarch64-linux-gnu" ;;
+  armhf) ARCH_TUPLE="arm-linux-gnueabihf" ;;
+  i386) ARCH_TUPLE="i386-linux-gnu" ;;
+  *) ARCH_TUPLE="${ARCH}-linux-gnu" ;;
+esac
 MAPNIK_PLUGIN_DIR="/usr/lib/${ARCH_TUPLE}/mapnik/4.0/input"
 if docker run --rm --entrypoint bash "$IMAGE_NAME" -c "test -d $MAPNIK_PLUGIN_DIR"; then
     echo "✓ PASS: Mapnik plugin directory exists at $MAPNIK_PLUGIN_DIR"

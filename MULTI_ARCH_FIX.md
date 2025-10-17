@@ -30,7 +30,14 @@ RUN sed -i 's|^plugindir=.*|plugindir=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input
 
 **After (dynamic):**
 ```dockerfile
-RUN ARCH_TUPLE=$(dpkg-architecture -qDEB_HOST_MULTIARCH) \
+RUN ARCH=$(dpkg --print-architecture) \
+ && case "$ARCH" in \
+      amd64) ARCH_TUPLE="x86_64-linux-gnu" ;; \
+      arm64) ARCH_TUPLE="aarch64-linux-gnu" ;; \
+      armhf) ARCH_TUPLE="arm-linux-gnueabihf" ;; \
+      i386) ARCH_TUPLE="i386-linux-gnu" ;; \
+      *) ARCH_TUPLE="$(uname -m)-linux-gnu" ;; \
+    esac \
  && sed -i "s|^plugindir=.*|plugindir=/usr/lib/${ARCH_TUPLE}/mapnik/4.0/input|" /etc/tirex/renderer/mapnik.conf
 ```
 
@@ -44,7 +51,14 @@ if docker run --rm --entrypoint bash "$IMAGE_NAME" -c "test -d /usr/lib/x86_64-l
 
 **After (dynamic):**
 ```bash
-ARCH_TUPLE=$(docker run --rm --entrypoint bash "$IMAGE_NAME" -c "dpkg-architecture -qDEB_HOST_MULTIARCH")
+ARCH=$(docker run --rm --entrypoint bash "$IMAGE_NAME" -c "dpkg --print-architecture")
+case "$ARCH" in
+  amd64) ARCH_TUPLE="x86_64-linux-gnu" ;;
+  arm64) ARCH_TUPLE="aarch64-linux-gnu" ;;
+  armhf) ARCH_TUPLE="arm-linux-gnueabihf" ;;
+  i386) ARCH_TUPLE="i386-linux-gnu" ;;
+  *) ARCH_TUPLE="${ARCH}-linux-gnu" ;;
+esac
 MAPNIK_PLUGIN_DIR="/usr/lib/${ARCH_TUPLE}/mapnik/4.0/input"
 if docker run --rm --entrypoint bash "$IMAGE_NAME" -c "test -d $MAPNIK_PLUGIN_DIR"; then
     echo "✓ PASS: Mapnik plugin directory exists at $MAPNIK_PLUGIN_DIR"
@@ -52,7 +66,7 @@ if docker run --rm --entrypoint bash "$IMAGE_NAME" -c "test -d $MAPNIK_PLUGIN_DI
 
 ## Architecture Detection
 
-The `dpkg-architecture -qDEB_HOST_MULTIARCH` command returns the multiarch tuple for the current system:
+The `dpkg --print-architecture` command returns the Debian architecture name, which we then map to the multiarch tuple:
 
 | Architecture | Multiarch Tuple | Mapnik Plugin Path |
 |--------------|----------------|-------------------|
