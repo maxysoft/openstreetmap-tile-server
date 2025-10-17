@@ -332,8 +332,8 @@ if [ -n "${PRERENDER_ZOOMS:-}" ] && [ "${PRERENDER_ZOOMS:-}" != "disabled" ]; th
         ZOOM_MAX=$(echo "${PRERENDER_ZOOMS}" | cut -d'-' -f2)
         
         # Run tirex-batch in background to avoid blocking startup
-        # tirex-batch uses a different format than render_list
-        sudo -u renderer tirex-batch --prio=20 map=default z=${ZOOM_MIN}-${ZOOM_MAX} &
+        # tirex-batch requires bbox parameter: use world bbox for full coverage
+        sudo -u renderer tirex-batch --prio=20 map=default bbox=-180,-90,180,90 z=${ZOOM_MIN}-${ZOOM_MAX} &
         PRERENDER_PID=$!
         
         # Wait for pre-rendering to complete (run in background)

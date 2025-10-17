@@ -8,7 +8,8 @@ This container allows you to easily set up an OpenStreetMap PNG tile server give
 **Base Image:** Debian Trixie (Stable) - `debian:trixie-20250929-slim`  
 **Node.js Version:** 22.x LTS (Jod) with npm 10.9.3  
 **Carto Version:** 1.2.0 (latest)  
-**Tile Rendering:** Tirex 0.7.0 with Mapnik 3.1
+**Tile Rendering:** Tirex 0.7.0 with Mapnik 4.0  
+**OpenStreetMap Style:** openstreetmap-carto v5.9.0
 
 **Note:** This tile server requires an external PostGIS database. The tile server container connects to a separate PostgreSQL/PostGIS instance (using the `postgis/postgis:18-3.6` image).
 
@@ -384,7 +385,8 @@ You may be running into problems with memory usage during the import. Have a loo
 The tile server has been migrated from `renderd` to `tirex` for better compatibility with Debian Trixie and improved tile rendering:
 
 - **Tile Rendering**: Switched from `renderd` (mod_tile) to `tirex` 0.7.0
-- **Mapnik Version**: Using Mapnik 3.1 (included with tirex on Debian Trixie)
+- **Mapnik Version**: Using Mapnik 4.0 (included with Debian Trixie)
+- **OpenStreetMap Style**: Updated to openstreetmap-carto v5.9.0 for latest bug fixes
 - **Architecture Changes**:
   - Replaced `renderd` daemon with `tirex-master` and `tirex-backend-manager`
   - Updated socket path from `/run/renderd/renderd.sock` to `/run/tirex/modtile.sock`
