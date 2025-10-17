@@ -159,8 +159,10 @@ RUN sed -i 's|^modtile_socket_name=.*|modtile_socket_name=/run/tirex/modtile.soc
  && sed -i 's|^backend_manager_pidfile=.*|backend_manager_pidfile=/run/tirex/tirex-backend-manager.pid|' /etc/tirex/tirex.conf
 
 # Configure mapnik renderer for tirex
-# Note: Debian Trixie has Mapnik 4.0 with plugins in /usr/lib/x86_64-linux-gnu/mapnik/4.0/input
-RUN sed -i 's|^plugindir=.*|plugindir=/usr/lib/x86_64-linux-gnu/mapnik/4.0/input|' /etc/tirex/renderer/mapnik.conf \
+# Note: Debian Trixie has Mapnik 4.0 with plugins in architecture-specific paths
+# Dynamically detect the architecture multiarch tuple (e.g., x86_64-linux-gnu, aarch64-linux-gnu)
+RUN ARCH_TUPLE=$(dpkg-architecture -qDEB_HOST_MULTIARCH) \
+ && sed -i "s|^plugindir=.*|plugindir=/usr/lib/${ARCH_TUPLE}/mapnik/4.0/input|" /etc/tirex/renderer/mapnik.conf \
  && sed -i 's|^fontdir=.*|fontdir=/usr/share/fonts|' /etc/tirex/renderer/mapnik.conf \
  && sed -i 's|^procs=.*|procs=4|' /etc/tirex/renderer/mapnik.conf
 
