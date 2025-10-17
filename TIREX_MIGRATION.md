@@ -54,9 +54,9 @@ Apache (mod_tile) → tirex socket → tirex-master → tirex-backend-manager �
 
 ## Mapnik Version
 
-Tirex on Debian Trixie uses Mapnik 4.0. The plugin directory has been updated accordingly:
+Tirex on Debian Trixie uses Mapnik 4.0. The plugin directory is architecture-specific:
 
-- **Mapnik Plugin Directory**: `/usr/lib/mapnik/input`
+- **Mapnik Plugin Directory**: `/usr/lib/x86_64-linux-gnu/mapnik/4.0/input`
 - **Font Directory**: `/usr/share/fonts`
 
 ## New Features
@@ -89,7 +89,7 @@ Key settings:
 ### Mapnik Renderer Configuration (`/etc/tirex/renderer/mapnik.conf`)
 
 Key settings:
-- Plugin directory: `/usr/lib/mapnik/input`
+- Plugin directory: `/usr/lib/x86_64-linux-gnu/mapnik/4.0/input`
 - Font directory: `/usr/share/fonts`
 - Number of processes: Configurable via `THREADS` environment variable (default: 4)
 
@@ -177,12 +177,12 @@ If you see errors about missing plugins or fonts:
 
 1. Verify Mapnik plugin directory:
    ```bash
-   ls -la /usr/lib/mapnik/input
+   ls -la /usr/lib/x86_64-linux-gnu/mapnik/4.0/input
    ```
 
 2. Check if PostGIS plugin exists:
    ```bash
-   ls -la /usr/lib/mapnik/input/postgis.input
+   ls -la /usr/lib/x86_64-linux-gnu/mapnik/4.0/input/postgis.input
    ```
 
 ## Performance Tuning
