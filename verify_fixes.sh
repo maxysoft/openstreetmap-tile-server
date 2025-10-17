@@ -15,16 +15,25 @@ echo ""
 
 # Test 1: Verify Mapnik plugin directory exists
 echo "Test 1: Checking Mapnik plugin directory..."
-if docker run --rm --entrypoint bash "$IMAGE_NAME" -c "test -d /usr/lib/x86_64-linux-gnu/mapnik/4.0/input"; then
-    echo "✓ PASS: Mapnik plugin directory exists"
+ARCH=$(docker run --rm --entrypoint bash "$IMAGE_NAME" -c "dpkg --print-architecture")
+case "$ARCH" in
+  amd64) ARCH_TUPLE="x86_64-linux-gnu" ;;
+  arm64) ARCH_TUPLE="aarch64-linux-gnu" ;;
+  armhf) ARCH_TUPLE="arm-linux-gnueabihf" ;;
+  i386) ARCH_TUPLE="i386-linux-gnu" ;;
+  *) ARCH_TUPLE="${ARCH}-linux-gnu" ;;
+esac
+MAPNIK_PLUGIN_DIR="/usr/lib/${ARCH_TUPLE}/mapnik/4.0/input"
+if docker run --rm --entrypoint bash "$IMAGE_NAME" -c "test -d $MAPNIK_PLUGIN_DIR"; then
+    echo "✓ PASS: Mapnik plugin directory exists at $MAPNIK_PLUGIN_DIR"
 else
-    echo "✗ FAIL: Mapnik plugin directory not found"
+    echo "✗ FAIL: Mapnik plugin directory not found at $MAPNIK_PLUGIN_DIR"
     exit 1
 fi
 
 # Test 2: Verify PostGIS plugin exists
 echo "Test 2: Checking PostGIS plugin..."
-if docker run --rm --entrypoint bash "$IMAGE_NAME" -c "test -f /usr/lib/x86_64-linux-gnu/mapnik/4.0/input/postgis.input"; then
+if docker run --rm --entrypoint bash "$IMAGE_NAME" -c "test -f $MAPNIK_PLUGIN_DIR/postgis.input"; then
     echo "✓ PASS: PostGIS plugin exists"
 else
     echo "✗ FAIL: PostGIS plugin not found"
@@ -34,10 +43,10 @@ fi
 # Test 3: Verify tirex configuration has correct plugin directory
 echo "Test 3: Checking tirex configuration..."
 PLUGINDIR=$(docker run --rm --entrypoint bash "$IMAGE_NAME" -c "grep ^plugindir /etc/tirex/renderer/mapnik.conf | cut -d= -f2")
-if [ "$PLUGINDIR" == "/usr/lib/x86_64-linux-gnu/mapnik/4.0/input" ]; then
-    echo "✓ PASS: Tirex configuration has correct plugin directory"
+if [ "$PLUGINDIR" == "$MAPNIK_PLUGIN_DIR" ]; then
+    echo "✓ PASS: Tirex configuration has correct plugin directory ($PLUGINDIR)"
 else
-    echo "✗ FAIL: Tirex plugin directory is incorrect: $PLUGINDIR"
+    echo "✗ FAIL: Tirex plugin directory is incorrect: $PLUGINDIR (expected: $MAPNIK_PLUGIN_DIR)"
     exit 1
 fi
 
